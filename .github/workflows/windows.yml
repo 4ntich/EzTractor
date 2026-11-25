@@ -124,16 +124,55 @@ jobs:
           path: dist/EzTractor-Setup-*.exe
           retention-days: 30
 
-      - name: Publicar Release
+      - name: Publicar Release (robusto, aguenta instabilidade do GitHub)
         if: env.EZT_RELEASE == '1'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.EZT_VERSION }}
-          target_commitish: ${{ github.sha }}
-          make_latest: true
-          files: dist/EzTractor-Setup-*.exe
-          name: EzTractor ${{ env.EZT_VERSION }}
-          body: |
-            Instalador do EzTractor para Windows (64 bits). Baixe o `EzTractor-Setup-${{ env.EZT_VERSION }}.exe` abaixo e execute.
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VER: ${{ env.EZT_VERSION }}
+          SHA: ${{ github.sha }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $exe = (Get-ChildItem dist\EzTractor-Setup-*.exe | Select-Object -First 1)
+          if (-not $exe) { throw "instalador nao encontrado" }
+          $tag = "v$env:VER"
+          $body = "Instalador do EzTractor para Windows (64 bits). Baixe o ``$($exe.Name)`` abaixo e execute.`n`nO app nao e assinado digitalmente. Se o Windows mostrar 'O Windows protegeu o computador', clique em Mais informacoes -> Executar assim mesmo."
 
-            O app não é assinado digitalmente. Se o Windows mostrar "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
+          # tenta uma chamada gh ate 8x, com espera crescente (atravessa 500/502/timeouts da API)
+          function Try-Gh([ScriptBlock]$fn) {
+            for ($i = 1; $i -le 8; $i++) {
+              try { return & $fn } catch {
+                Write-Host "tentativa $i falhou: $($_.Exception.Message)"
+                if ($i -eq 8) { throw }
+                Start-Sleep -Seconds (10 * $i)
+              }
+            }
+          }
+
+          # 1) garante o release (reaproveita se ja existir; senao cria)
+          $relId = Try-Gh {
+            $r = gh api "repos/$env:REPO/releases/tags/$tag" 2>$null | ConvertFrom-Json
+            if ($r.id) { return $r.id }
+            $c = gh api -X POST "repos/$env:REPO/releases" -f "tag_name=$tag" -f "target_commitish=$env:SHA" -f "name=EzTractor $env:VER" -f "body=$body" -F "make_latest=true" | ConvertFrom-Json
+            return $c.id
+          }
+          Write-Host "release id: $relId"
+
+          # 2) remove um asset antigo de mesmo nome (idempotente) e envia o novo via upload API
+          Try-Gh {
+            $assets = gh api "repos/$env:REPO/releases/$relId/assets" | ConvertFrom-Json
+            foreach ($a in $assets) { if ($a.name -eq $exe.Name) { gh api -X DELETE "repos/$env:REPO/releases/assets/$($a.id)" | Out-Null } }
+          }
+          Try-Gh {
+            $url = "https://uploads.github.com/repos/$env:REPO/releases/$relId/assets?name=$($exe.Name)"
+            $h = @{ Authorization = "Bearer $env:GH_TOKEN"; "Content-Type" = "application/octet-stream"; "X-GitHub-Api-Version" = "2022-11-28" }
+            Invoke-WebRequest -Uri $url -Method Post -Headers $h -InFile $exe.FullName -TimeoutSec 600 | Out-Null
+          }
+
+          # 3) confere que o asset ficou publicado
+          $final = Try-Gh { gh api "repos/$env:REPO/releases/$relId/assets" | ConvertFrom-Json }
+          if (-not ($final | Where-Object { $_.name -eq $exe.Name -and $_.state -eq "uploaded" })) {
+            throw "o instalador nao ficou publicado no release"
+          }
+          Write-Host "publicado: $tag / $($exe.Name)"
