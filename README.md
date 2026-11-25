@@ -47,6 +47,23 @@ docker compose exec ollama ollama pull qwen2.5:7b
 
 No formulário, o botão **IA local** avisa se o Ollama está fora do ar ou se o modelo ainda não foi baixado.
 
+## Templates: textos, fontes, efeitos e molduras em todos os clipes
+
+Na aba **Templates** você monta o visual dos clipes, e ele é aplicado automaticamente em todos os vídeos:
+
+- **16 estilos prontos** (Gamer Neon, Impacto Amarelo, Meme Clássico, Top Ranking + CTA, Retrô Arcade, FPS Militar, Notícia, Cinema, Quadrinhos…). Dá para usar direto ou abrir no editor e mudar.
+- **Editor visual:** arraste os textos na tela, com guias de centralização e área segura do TikTok/Reels. Até 10 textos (título, texto, etiqueta).
+- **Textos automáticos por clipe:** `{titulo}` `{gancho}` `{jogo}` `{numero}` `{total}` `{nota}` `{projeto}` `{data}`. Ex.: `TOP {numero}` vira TOP 1, TOP 2… em cada clipe.
+- **17 fontes** (Anton, Bebas Neue, Bangers, Luckiest Guy, Press Start 2P, Black Ops One, Russo One, Permanent Marker, Pacifico…), todas livres e incluídas no projeto (`web/public/fonts`).
+- **Efeitos:** contorno, sombra, brilho neon, caixa atrás do texto, opacidade, inclinação, espaçamento, maiúsculas, itálico.
+- **Animações:** fade, pop, zoom, subir, descer, entrar pela direita, máquina de escrever, pulsar. Cada texto pode aparecer no clipe todo, só no início ou só no final (ex.: "SEGUE PRA PARTE 2" nos últimos 3 s).
+- **Vídeo e moldura:** formatos 9:16, 4:5, 1:1 e 16:9; vídeo preenchendo a tela, inteiro com fundo desfocado ou com fundo sólido; zoom; vinheta; faixas de cabeçalho, rodapé e laterais; barra de progresso.
+- **Legendas automáticas estilizadas:** fonte, cores, palavra falada destacada com "pop", posição e palavras por vez.
+- **Prévia real:** gera um quadro com o mesmo motor do vídeo final, se quiser sobre um vídeo seu.
+- **Template padrão (★):** entra sozinho em todos os projetos novos. Na página do projeto, **Aplicar a todos os clipes** troca o template e renderiza tudo de novo.
+
+O editor e o vídeo usam as mesmas fontes e a mesma escala, calibrada fonte a fonte e coberta por testes, então o que você vê na tela é o que sai no vídeo.
+
 ## Configuração (`.env`)
 
 | Variável | Padrão | Descrição |
@@ -89,6 +106,7 @@ navegador ──► FastAPI (serve o site + API) ──► thread de processamen
 | Ranking | `pipeline/ranker.py` | Sinais, Ollama ou Claude (JSON estruturado), com fallback automático |
 | Títulos sem IA | `pipeline/headlines.py` | Frase mais empolgada perto do pico, ou modelos por idioma (pt/en/es) |
 | Legendas | `pipeline/captions.py` | ASS com a palavra atual destacada + gancho |
+| Templates | `pipeline/template_render.py`, `presets.py`, `fonts.py` | Camadas, variáveis, efeitos e animações em ASS; molduras, vinheta e barra de progresso no ffmpeg |
 | Render | `pipeline/render.py` | ffmpeg: `crop`, `fit` (fundo desfocado), `split` (webcam + jogo) |
 
 ## Desenvolvimento

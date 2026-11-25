@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     storage_dir: Path = Path("./data")
     # Pasta com o site já compilado (web/out). Se existir, a API também serve o site.
     web_dir: Path | None = None
+    # Pasta das fontes dos templates (padrão: web/public/fonts do repositório)
+    fonts_dir: Path | None = None
     jwt_secret: str = "dev-only-secret-change-me-in-production-0123456789"
     jwt_ttl_hours: int = 24 * 30
     cors_origins: str = "http://localhost:3000"

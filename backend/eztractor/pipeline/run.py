@@ -5,18 +5,20 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import storage
 from ..config import get_settings
 from ..db import session_factory
-from ..models import Clip, Project, ProjectStatus
+from ..models import Clip, Project, ProjectStatus, Template
 from . import candidates as cand_mod
 from . import ranker, signals
 from .captions import build_ass, write_ass
 from .ingest import download_url
 from .media import extract_audio, probe, thumbnail
 from .render import RenderSpec, render_clip
+from .template_render import build_template_ass, clip_context, normalize, template_spec
 from .transcribe import transcribe
 
 log = logging.getLogger(__name__)
@@ -37,16 +39,39 @@ def _source_path(project: Project) -> Path:
     return storage.path_for(project.source_key)
 
 
+def _template_config(db: Session, project: Project) -> dict | None:
+    tid = (project.settings or {}).get("template_id")
+    if not tid:
+        return None
+    tpl = db.get(Template, tid)
+    if tpl is None:
+        log.warning("template %s do projeto %s não existe mais; renderizando sem template", tid, project.id)
+        return None
+    return normalize(tpl.config)
+
+
 def _render(db: Session, project: Project, clip: Clip, workdir: Path) -> None:
     st = project.settings or {}
-    spec = RenderSpec(
-        start=clip.start_s, end=clip.end_s, height=get_settings().render_height,
-        layout=st.get("layout", "crop"), facecam=st.get("facecam"),
-    )
-    ass = build_ass(
-        project.transcript or [], clip.start_s, clip.end_s, spec.width, spec.height,
-        hook=clip.hook, captions=st.get("captions", True),
-    )
+    max_side = get_settings().render_height
+    cfg = _template_config(db, project)
+    if cfg is not None:
+        # consulta o banco: durante o processamento `project.clips` ainda não tem os clipes recém-criados
+        db.flush()
+        ranked = list(db.scalars(select(Clip).where(Clip.project_id == project.id)
+                                 .order_by(Clip.score.desc(), Clip.start_s)))
+        rank = next((i + 1 for i, c in enumerate(ranked) if c.id == clip.id), 1)
+        spec = template_spec(cfg, clip.start_s, clip.end_s, max_side, st.get("layout", "crop"), st.get("facecam"))
+        ass = build_template_ass(cfg, project.transcript or [], clip.start_s, clip.end_s,
+                                 clip_context(clip, project, len(ranked), rank), captions=st.get("captions", True))
+    else:
+        spec = RenderSpec(
+            start=clip.start_s, end=clip.end_s, height=max_side,
+            layout=st.get("layout", "crop"), facecam=st.get("facecam"),
+        )
+        ass = build_ass(
+            project.transcript or [], clip.start_s, clip.end_s, spec.width, spec.height,
+            hook=clip.hook, captions=st.get("captions", True),
+        )
     spec.ass_path = write_ass(workdir / f"{clip.id}.ass", ass)
 
     base = f"{storage.project_dir(project.id)}/clips/{clip.id}"
@@ -155,6 +180,26 @@ def render_one(clip_id: str) -> None:
             log.exception("falha ao re-renderizar clipe %s", clip_id)
             clip.render_status = "failed"
             db.commit()
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+        db.close()
+
+
+def render_all(project_id: str) -> None:
+    """Re-renderiza todos os clipes (ex.: depois de trocar o template), em sequência."""
+    db = session_factory()()
+    workdir = Path(tempfile.mkdtemp(prefix="ezt-all-"))
+    try:
+        project = db.get(Project, project_id)
+        if project is None:
+            return
+        for clip in list(project.clips):
+            try:
+                _render(db, project, clip, workdir)
+            except Exception:
+                log.exception("falha ao re-renderizar clipe %s", clip.id)
+                clip.render_status = "failed"
+                db.commit()
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
         db.close()

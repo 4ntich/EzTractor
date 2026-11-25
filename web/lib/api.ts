@@ -40,6 +40,7 @@ export type ProjectSettings = {
   game: string;
   captions: boolean;
   ranker: Ranker | null;
+  template_id?: string | null;
 };
 
 export type Project = {

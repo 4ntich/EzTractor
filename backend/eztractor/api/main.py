@@ -1,6 +1,7 @@
 import json
 import os
 import shutil
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -8,7 +9,7 @@ from pathlib import Path
 import jwt
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -18,10 +19,15 @@ from .. import storage
 from ..auth import check_password, create_token, password_required, require_auth
 from ..config import get_settings
 from ..db import get_db, init_db
-from ..models import Clip, Project, ProjectStatus
+from ..fonts import catalog as fonts_catalog
+from ..models import Clip, Project, ProjectStatus, Template
+from ..pipeline.media import MediaError, probe
+from ..pipeline.template_render import VARIABLES, normalize, render_preview
+from ..presets import PRESETS
 from ..pipeline.ranker import ollama_status
-from ..queue import enqueue_project, enqueue_render
+from ..queue import enqueue_project, enqueue_project_render, enqueue_render
 from ..schemas import (
+    ApplyTemplateIn,
     AuthStatusOut,
     CapabilitiesOut,
     ClipOut,
@@ -30,6 +36,9 @@ from ..schemas import (
     ProjectFromUrlIn,
     ProjectOut,
     ProjectSettings,
+    TemplateIn,
+    TemplateOut,
+    TemplatePreviewIn,
     TokenOut,
 )
 
@@ -70,6 +79,22 @@ def project_out(p: Project, with_clips: bool = True) -> ProjectOut:
     )
 
 
+def resolve_settings(db: Session, settings: ProjectSettings) -> dict:
+    """Valida o template escolhido; se nenhum foi informado, usa o template padrão (se houver)."""
+    data = settings.model_dump()
+    if "template_id" not in settings.model_fields_set:
+        default = db.scalar(select(Template).where(Template.is_default.is_(True)))
+        data["template_id"] = default.id if default else None
+    elif data["template_id"] and db.get(Template, data["template_id"]) is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "template não encontrado")
+    return data
+
+
+def template_out(t: Template) -> TemplateOut:
+    return TemplateOut(id=t.id, name=t.name, config=normalize(t.config), is_default=t.is_default,
+                       created_at=t.created_at, updated_at=t.updated_at)
+
+
 def get_project_or_404(db: Session, project_id: str) -> Project:
     p = db.get(Project, project_id)
     if p is None:
@@ -94,7 +119,7 @@ def capabilities():
 @api.post("/projects/url", response_model=ProjectOut, status_code=201)
 def create_from_url(body: ProjectFromUrlIn, db: Session = Depends(get_db)):
     p = Project(title=body.title or body.url, source_type="url", source_url=body.url,
-                settings=body.settings.model_dump())
+                settings=resolve_settings(db, body.settings))
     db.add(p)
     db.commit()
     enqueue_project(p.id)
@@ -117,7 +142,7 @@ def create_from_upload(
     if ext not in ALLOWED_EXT:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, f"formato não suportado: {ext or '?'}")
 
-    p = Project(title=title or (file.filename or "Upload"), source_type="upload", settings=parsed.model_dump())
+    p = Project(title=title or (file.filename or "Upload"), source_type="upload", settings=resolve_settings(db, parsed))
     db.add(p)
     db.flush()
     key = f"{storage.project_dir(p.id)}/source{ext}"
@@ -195,6 +220,104 @@ def update_clip(clip_id: str, body: ClipUpdateIn, db: Session = Depends(get_db))
         enqueue_render(clip.id)
         db.refresh(clip)
     return clip_out(clip)
+
+
+# ---------- templates
+@api.get("/templates", response_model=list[TemplateOut])
+def list_templates(db: Session = Depends(get_db)):
+    rows = db.scalars(select(Template).order_by(Template.is_default.desc(), Template.updated_at.desc()))
+    return [template_out(t) for t in rows]
+
+
+def _set_default(db: Session, tpl: Template, is_default: bool) -> None:
+    if is_default:
+        for other in db.scalars(select(Template).where(Template.is_default.is_(True), Template.id != tpl.id)):
+            other.is_default = False
+    tpl.is_default = is_default
+
+
+@api.post("/templates", response_model=TemplateOut, status_code=201)
+def create_template(body: TemplateIn, db: Session = Depends(get_db)):
+    tpl = Template(name=body.name, config=body.config.model_dump())
+    db.add(tpl)
+    db.flush()
+    _set_default(db, tpl, body.is_default)
+    db.commit()
+    return template_out(tpl)
+
+
+@api.put("/templates/{template_id}", response_model=TemplateOut)
+def update_template(template_id: str, body: TemplateIn, db: Session = Depends(get_db)):
+    tpl = db.get(Template, template_id)
+    if tpl is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "template não encontrado")
+    tpl.name, tpl.config = body.name, body.config.model_dump()
+    _set_default(db, tpl, body.is_default)
+    db.commit()
+    return template_out(tpl)
+
+
+@api.delete("/templates/{template_id}", status_code=204)
+def delete_template(template_id: str, db: Session = Depends(get_db)):
+    tpl = db.get(Template, template_id)
+    if tpl is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "template não encontrado")
+    db.delete(tpl)
+    db.commit()
+
+
+@api.get("/template-presets")
+def template_presets():
+    """Galeria de estilos prontos."""
+    return PRESETS
+
+
+@api.get("/template-options")
+def template_options():
+    """Fontes e variáveis disponíveis para o editor."""
+    return {"fonts": fonts_catalog(), "variables": VARIABLES}
+
+
+@api.post("/templates/preview", responses={200: {"content": {"image/jpeg": {}}}})
+def preview_template(body: TemplatePreviewIn, db: Session = Depends(get_db)):
+    """Renderiza um quadro com o mesmo motor do vídeo final (sobre um vídeo seu, se informado)."""
+    src = None
+    w, h, at = 1920, 1080, 0.0
+    if body.project_id:
+        p = get_project_or_404(db, body.project_id)
+        if p.source_key and storage.path_for(p.source_key).exists():
+            src = storage.path_for(p.source_key)
+            try:
+                info = probe(src)
+            except MediaError as e:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
+            w, h = info.width, info.height
+            best = p.clips[0] if p.clips else None
+            at = best.start_s if best else min(30.0, info.duration_s / 2)
+    with tempfile.TemporaryDirectory(prefix="ezt-prev-") as tmp:
+        out = Path(tmp) / "preview.jpg"
+        try:
+            render_preview(body.config.model_dump(), out, tmp, src=src, src_w=w, src_h=h, at_s=at)
+        except MediaError as e:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"falha ao gerar prévia: {e}") from None
+        return Response(out.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@api.post("/projects/{project_id}/apply-template", response_model=ProjectOut)
+def apply_template(project_id: str, body: ApplyTemplateIn, db: Session = Depends(get_db)):
+    """Troca o template do projeto e renderiza de novo todos os clipes."""
+    p = get_project_or_404(db, project_id)
+    if p.status in (ProjectStatus.queued.value, ProjectStatus.processing.value):
+        raise HTTPException(status.HTTP_409_CONFLICT, "aguarde o processamento terminar")
+    if body.template_id and db.get(Template, body.template_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "template não encontrado")
+    p.settings = {**(p.settings or {}), "template_id": body.template_id}
+    for c in p.clips:
+        c.render_status = "pending"
+    db.commit()
+    enqueue_project_render(p.id)
+    db.refresh(p)
+    return project_out(p)
 
 
 def create_app() -> FastAPI:

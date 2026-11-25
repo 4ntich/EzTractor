@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { api, Capabilities, Project, ProjectSettings, Ranker } from "@/lib/api";
+import type { Template } from "@/lib/templates";
 
 const DEFAULTS: ProjectSettings = {
   clip_min_s: 15,
@@ -48,7 +50,18 @@ export default function NewProjectForm() {
   const [error, setError] = useState<string | null>(null);
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [ranker, setRanker] = useState<Ranker>("heuristic");
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templateId, setTemplateId] = useState<string>("");
   const userPicked = useRef(false); // não sobrescrever a escolha do usuário com o padrão do servidor
+
+  useEffect(() => {
+    api<Template[]>("/templates")
+      .then((ts) => {
+        setTemplates(ts);
+        setTemplateId(ts.find((t) => t.is_default)?.id ?? "");
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     api<Capabilities>("/capabilities")
@@ -68,6 +81,7 @@ export default function NewProjectForm() {
     const settings: ProjectSettings = {
       ...s,
       ranker,
+      template_id: templateId || null,
       facecam: s.layout === "split" ? { ...CORNERS[corner], w: 0.28, h: 0.3 } : null,
     };
     try {
@@ -156,6 +170,19 @@ export default function NewProjectForm() {
             <option value="en">Inglês</option>
             <option value="es">Espanhol</option>
           </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="label" htmlFor="template">Template (textos, fontes e molduras)</label>
+        <div className="flex gap-2">
+          <select id="template" className="input" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+            <option value="">Sem template (estilo simples)</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}{t.is_default ? " (padrão)" : ""}</option>
+            ))}
+          </select>
+          <Link href="/app/templates" className="btn-ghost shrink-0 text-xs">Criar / editar</Link>
         </div>
       </div>
 

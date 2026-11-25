@@ -23,3 +23,22 @@ body {
     @apply rounded-xl border border-zinc-800 bg-zinc-900/60;
   }
 }
+
+/* ---------- animações da prévia dos templates (equivalentes às do vídeo) */
+@keyframes ezt-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ezt-pop { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.12); opacity: 1; } 100% { transform: scale(1); } }
+@keyframes ezt-zoom-in { from { transform: scale(1.35); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes ezt-slide-up { from { transform: translateY(60%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ezt-slide-down { from { transform: translateY(-60%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ezt-slide-left { from { transform: translateX(40%); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ezt-typewriter { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes ezt-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+.ezt-anim-fade { animation: ezt-fade .35s ease-out both; }
+.ezt-anim-pop { animation: ezt-pop .28s ease-out both; }
+.ezt-anim-zoom-in { animation: ezt-zoom-in .45s ease-out both; }
+.ezt-anim-slide-up { animation: ezt-slide-up .35s ease-out both; }
+.ezt-anim-slide-down { animation: ezt-slide-down .35s ease-out both; }
+.ezt-anim-slide-left { animation: ezt-slide-left .35s ease-out both; }
+.ezt-anim-typewriter { animation: ezt-typewriter 1.2s steps(24) both; }
+.ezt-anim-pulse { animation: ezt-pulse .8s ease-in-out infinite; }
+.ezt-canvas { container-type: inline-size; }

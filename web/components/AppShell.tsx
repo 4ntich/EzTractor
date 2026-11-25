@@ -25,9 +25,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <div className="border-b border-zinc-800">
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <Link href="/app" className="text-lg font-black">
-            Ez<span className="text-brand">Tractor</span>
-          </Link>
+          <div className="flex items-center gap-5">
+            <Link href="/app" className="text-lg font-black">
+              Ez<span className="text-brand">Tractor</span>
+            </Link>
+            <Link href="/app" className="text-sm text-zinc-400 hover:text-white">Projetos</Link>
+            <Link href="/app/templates" className="text-sm text-zinc-400 hover:text-white">Templates</Link>
+          </div>
           {locked && (
             <button
               className="text-sm text-zinc-400 hover:text-zinc-100"

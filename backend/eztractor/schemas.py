@@ -47,6 +47,8 @@ class ProjectSettings(BaseModel):
     captions: bool = True
     # None = usa o padrão do servidor (EZT_RANKER)
     ranker: str | None = Field(None, pattern="^(heuristic|ollama|claude)$")
+    # Template visual. Se o campo não for enviado, usa o template marcado como padrão.
+    template_id: str | None = None
 
     @model_validator(mode="after")
     def _check(self):
@@ -106,3 +108,142 @@ class ClipUpdateIn(BaseModel):
     title: str | None = Field(None, max_length=200)
     hook: str | None = Field(None, max_length=200)
 
+
+
+# ---------------------------------------------------------------- templates
+HEX = r"^#[0-9A-Fa-f]{6}$"
+
+ANIMATIONS = "^(none|fade|pop|slide-up|slide-down|slide-left|typewriter|pulse|zoom-in)$"
+
+
+class TemplateLayer(BaseModel):
+    id: str = Field(min_length=1, max_length=40)
+    kind: str = Field("text", pattern="^(title|text|tag)$")
+    # Aceita variáveis preenchidas em cada clipe: {titulo} {gancho} {jogo} {numero} {total} {nota} {projeto} {data}
+    text: str = Field("", max_length=300)
+    x: float = Field(50, ge=0, le=100)  # % da largura (âncora conforme o alinhamento)
+    y: float = Field(50, ge=0, le=100)  # % da altura (centro vertical do bloco)
+    boxWidth: float = Field(84, ge=10, le=100)  # largura máxima antes de quebrar linha (% da tela)
+    fontSize: float = Field(32, ge=6, le=400)  # px na largura do template
+    color: str = Field("#F1EBDD", pattern=HEX)
+    opacity: float = Field(100, ge=0, le=100)
+    align: str = Field("center", pattern="^(left|center|right)$")
+    bold: bool = False
+    italic: bool = False
+    uppercase: bool = False
+    letterSpacing: float = Field(0, ge=-10, le=60)  # px
+    rotation: float = Field(0, ge=-45, le=45)  # graus
+    fontFamily: str = "sans"
+    # efeitos
+    outlineWidth: float = Field(0, ge=0, le=30)
+    outlineColor: str = Field("#000000", pattern=HEX)
+    shadowDepth: float = Field(0, ge=0, le=30)
+    shadowColor: str = Field("#000000", pattern=HEX)
+    shadowOpacity: float = Field(60, ge=0, le=100)
+    glow: bool = False  # brilho neon (desfoca o contorno)
+    backgroundEnabled: bool = False  # caixa atrás do texto (desativa o contorno)
+    backgroundColor: str = Field("#252522", pattern=HEX)
+    backgroundOpacity: float = Field(100, ge=0, le=100)
+    backgroundPadding: float = Field(12, ge=0, le=60)
+    # animação e tempo
+    animation: str = Field("none", pattern=ANIMATIONS)
+    showMode: str = Field("always", pattern="^(always|start|end)$")
+    showSeconds: float = Field(3, ge=0.5, le=60)
+
+    @field_validator("fontFamily")
+    @classmethod
+    def _font(cls, v: str) -> str:
+        from .fonts import FONTS
+
+        if v not in FONTS:
+            raise ValueError(f"fonte desconhecida: {v}")
+        return v
+
+
+class TemplateFrame(BaseModel):
+    sideBorders: bool = False
+    headerBorder: bool = False
+    footerBorder: bool = False
+    color: str = Field("#C9AE73", pattern=HEX)
+    sideWidthPercent: float = Field(5, ge=0.1, le=45)
+    headerHeightPercent: float = Field(8, ge=0.1, le=45)
+    footerHeightPercent: float = Field(8, ge=0.1, le=45)
+
+
+class TemplateCaptions(BaseModel):
+    """Estilo das legendas automáticas (fala transcrita) quando o template é usado."""
+
+    fontFamily: str = "anton"
+    fontSize: float = Field(84, ge=10, le=200)
+    color: str = Field("#FFFFFF", pattern=HEX)
+    highlightColor: str = Field("#FFE600", pattern=HEX)
+    outlineColor: str = Field("#000000", pattern=HEX)
+    outlineWidth: float = Field(5, ge=0, le=20)
+    y: float = Field(72, ge=5, le=95)  # % da altura
+    uppercase: bool = True
+    wordsPerLine: int = Field(3, ge=1, le=8)
+    animation: str = Field("pop", pattern="^(none|pop)$")  # palavra atual "pula"
+
+    @field_validator("fontFamily")
+    @classmethod
+    def _font(cls, v: str) -> str:
+        from .fonts import FONTS
+
+        if v not in FONTS:
+            raise ValueError(f"fonte desconhecida: {v}")
+        return v
+
+
+class TemplateProgressBar(BaseModel):
+    enabled: bool = False
+    color: str = Field("#C9AE73", pattern=HEX)
+    heightPercent: float = Field(0.8, ge=0.2, le=5)
+    position: str = Field("bottom", pattern="^(top|bottom)$")
+
+
+class TemplateConfig(BaseModel):
+    aspectRatio: str = Field("9:16", max_length=10)
+    width: int = Field(1080, ge=240, le=3840)
+    height: int = Field(1920, ge=240, le=3840)
+    fitMode: str = Field("cover", pattern="^(cover|contain|blur)$")
+    videoZoom: float = Field(100, ge=50, le=200)  # % (zoom no vídeo dentro da tela)
+    backgroundColor: str = Field("#252522", pattern=HEX)
+    accentColor: str = Field("#C9AE73", pattern=HEX)
+    layoutPreset: str = Field("free", max_length=30)
+    vignette: bool = False
+    frame: TemplateFrame = TemplateFrame()
+    captions: TemplateCaptions = TemplateCaptions()
+    progressBar: TemplateProgressBar = TemplateProgressBar()
+    layers: list[TemplateLayer] = Field(default_factory=list, max_length=10)
+
+
+class TemplateIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    config: TemplateConfig
+    is_default: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def _name(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("dê um nome ao template")
+        return v
+
+
+class TemplateOut(BaseModel):
+    id: str
+    name: str
+    config: TemplateConfig
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class TemplatePreviewIn(BaseModel):
+    config: TemplateConfig
+    project_id: str | None = None  # usa um quadro desse projeto como fundo
+
+
+class ApplyTemplateIn(BaseModel):
+    template_id: str | None = None  # None = remover template

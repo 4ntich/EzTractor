@@ -20,6 +20,7 @@ RUN pip install --no-cache-dir ".[whisper]"
 COPY --from=web /web/out /app/web
 
 ENV EZT_WEB_DIR=/app/web \
+    EZT_FONTS_DIR=/app/web/fonts \
     EZT_STORAGE_DIR=/data/media \
     EZT_DATABASE_URL=sqlite:////data/eztractor.db \
     EZT_QUEUE_MODE=inline \

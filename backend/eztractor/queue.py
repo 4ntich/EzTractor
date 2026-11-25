@@ -32,3 +32,8 @@ def enqueue_project(project_id: str) -> None:
 
 def enqueue_render(clip_id: str) -> None:
     enqueue("eztractor.pipeline.run.render_one", clip_id)
+
+
+def enqueue_project_render(project_id: str) -> None:
+    """Renderiza de novo todos os clipes de um projeto, um por vez."""
+    enqueue("eztractor.pipeline.run.render_all", project_id)
