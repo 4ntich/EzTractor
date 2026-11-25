@@ -110,7 +110,7 @@ export default function ClipEditor({ clip, project, onClose, onSaved }: {
 
   // portal: cartões de vidro (backdrop-filter) prenderiam um "position: fixed" dentro deles
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-6"
       role="dialog" aria-modal="true" aria-label="Editar vídeo" onClick={onClose}>
       <div className="card ezt-rise max-h-[95vh] w-full max-w-4xl overflow-y-auto p-4 sm:p-6" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between gap-3">
