@@ -62,8 +62,8 @@ h1, h2, h3 {
   }
   .card-hover:hover {
     transform: translateY(-2px);
-    border-color: rgb(var(--a-400) / .55);
-    box-shadow: var(--glass-shadow), 0 18px 40px -16px rgb(var(--a-500) / .55);
+    border-color: rgb(255 255 255 / .22);
+    box-shadow: var(--glass-shadow), 0 16px 36px -18px rgb(var(--a-500) / .3);
   }
 
   /* ---------------------------------------------------------- botões */

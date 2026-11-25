@@ -87,10 +87,10 @@ def block(selector: str, surface: list[str], accent: list[str], on_accent: str, 
         f"  --bg: {bg};",
         f"  --glass-bg: {'rgba(255,255,255,.065)' if dark else 'rgba(255,255,255,.58)'};",
         f"  --glass-bg-strong: {'rgba(255,255,255,.10)' if dark else 'rgba(255,255,255,.78)'};",
-        f"  --glass-border: {('rgba(190,245,255,.24)' if wet else 'rgba(255,255,255,.12)') if dark else 'rgba(255,255,255,.9)'};",
+        f"  --glass-border: {('rgba(205,240,248,.14)' if wet else 'rgba(255,255,255,.12)') if dark else 'rgba(255,255,255,.9)'};",
         f"  --glass-edge: {'rgba(0,0,0,.35)' if dark else 'rgba(15,40,50,.10)'};",
         "  --glass-highlight: linear-gradient(180deg, rgba(255,255,255,"
-        f"{'.20' if wet else '.08'}) 0%, rgba(255,255,255,{'.05' if wet else '.02'}) 44%, rgba(255,255,255,0) 50%);",
+        f"{'.07' if wet else '.05'}) 0%, rgba(255,255,255,{'.02' if wet else '.015'}) 40%, rgba(255,255,255,0) 60%);",
         "  --glass-shadow: 0 1px 0 rgba(255,255,255,"
         f"{'.22' if dark else '.9'}) inset, 0 22px 45px -18px rgba(0,0,0,{'.6' if dark else '.18'}), 0 2px 8px rgba(0,0,0,{'.25' if dark else '.06'});",
         f"  --droplets: {DROPLETS if wet else 'none'};",
