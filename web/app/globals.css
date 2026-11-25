@@ -13,9 +13,18 @@ html {
 body {
   @apply min-h-screen font-sans antialiased;
   color: rgb(var(--z-100));
+  background: rgb(var(--z-950));
+  transition: color .3s ease;
+}
+/* Fundo numa camada fixa própria (NÃO usar background-attachment: fixed:
+   com backdrop-filter dos cards isso gera bandas intermitentes no WebView2/Chromium). */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
   background: var(--bg);
-  background-attachment: fixed;
-  transition: background .4s ease, color .3s ease;
+  pointer-events: none;
 }
 h1, h2, h3 {
   @apply font-display;
