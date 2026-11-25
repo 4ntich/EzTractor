@@ -24,7 +24,10 @@ if ffmpeg_dir:  # build "shared" do ffmpeg: ffmpeg.exe + ffprobe.exe + DLLs comp
 
 # Código protegido: se EZT_OBF_DIR existir (PyArmor), empacota o eztractor/launcher ofuscados de lá.
 OBF = os.environ.get("EZT_OBF_DIR")
-SRC = Path(OBF) if OBF else (ROOT / "backend")
+if OBF:
+    OBF = Path(OBF)
+    OBF = OBF if OBF.is_absolute() else (ROOT / OBF).resolve()
+SRC = OBF if OBF else (ROOT / "backend")
 LAUNCHER = (SRC / "launcher.py") if OBF else (HERE / "launcher.py")
 sys.path.insert(0, str(SRC))
 _ezt = collect_submodules("eztractor")
