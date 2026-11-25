@@ -243,3 +243,38 @@ def test_transcribe_passes_decoded_audio_not_path(tmp_path, monkeypatch):
     assert isinstance(got["audio"], np.ndarray) and got["audio"].dtype == np.float32
     assert 31000 < got["audio"].size < 33000 and float(np.abs(got["audio"]).max()) <= 1.0
     assert words == [{"w": "oi", "start": 0.1, "end": 0.4}] and lang == "pt"
+
+
+def test_whisper_falls_back_to_cpu_when_cuda_dlls_missing(monkeypatch):
+    """Regressão: no Windows com placa NVIDIA sem CUDA instalado dava 'cublas64_12.dll is not found'."""
+    import sys
+    import types
+
+    from eztractor import config
+    from eztractor.pipeline import transcribe as tr
+
+    created = []
+
+    class FakeModel:
+        def __init__(self, name, device, compute_type):
+            self.device = device
+            created.append(device)
+
+        def transcribe(self, audio, **kw):
+            if self.device == "cuda":
+                raise RuntimeError("Library cublas64_12.dll is not found or cannot be loaded")
+            return iter([]), types.SimpleNamespace(language="pt", duration=1.0)
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=FakeModel))
+    monkeypatch.setitem(sys.modules, "ctranslate2", types.SimpleNamespace(get_cuda_device_count=lambda: 1))
+    monkeypatch.setattr(tr, "_model", None)
+    monkeypatch.setattr(tr, "_model_device", None)
+    monkeypatch.setenv("EZT_TRANSCRIBER", "faster_whisper")
+    config.get_settings.cache_clear()
+    try:
+        model = tr._load_model()
+        assert model.device == "cpu" and created == ["cuda", "cpu"]
+    finally:
+        config.get_settings.cache_clear()
+        tr._model = None
+        tr._model_device = None

@@ -56,8 +56,11 @@ ANTHROPIC_API_KEY=
 # Transcrição: faster_whisper | none.  Modelos: tiny, base, small, medium, large-v3
 EZT_TRANSCRIBER=faster_whisper
 EZT_WHISPER_MODEL=small
+# Onde rodar a transcrição: auto (placa de vídeo NVIDIA se o CUDA estiver instalado, senão processador) | cpu | cuda
+EZT_WHISPER_DEVICE=auto
 
-# 1920 = 1080x1920 | 1280 = 720x1280 (renderiza mais rápido)
+# Qualidade padrão do vídeo final (dá para escolher em cada projeto, na tela):
+# 640=360p 854=480p 1280=720p 1920=1080p 2560=1440p 3840=4K
 EZT_RENDER_HEIGHT=1920
 """
 

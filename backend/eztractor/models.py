@@ -19,8 +19,13 @@ def _now() -> datetime:
 class ProjectStatus(str, enum.Enum):
     queued = "queued"
     processing = "processing"
+    paused = "paused"
+    cancelled = "cancelled"
     ready = "ready"
     failed = "failed"
+
+
+ACTIVE_STATUSES = (ProjectStatus.queued.value, ProjectStatus.processing.value, ProjectStatus.paused.value)
 
 
 class Project(Base):
@@ -38,6 +43,8 @@ class Project(Base):
     stage: Mapped[str] = mapped_column(String(40), default="")
     progress: Mapped[int] = mapped_column(Integer, default=0)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # pedido do usuário para o processamento em andamento: run | pause | cancel (ver control.py)
+    control: Mapped[str] = mapped_column(String(10), default="run", server_default="run")
     # settings: clip_min_s, clip_max_s, max_clips, language, layout, facecam{x,y,w,h}, game, captions
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
     transcript: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [{w,start,end}]

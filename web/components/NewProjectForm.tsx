@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { api, Capabilities, Project, ProjectSettings, Ranker } from "@/lib/api";
+import { api, Capabilities, DOWNLOAD_QUALITIES, Project, ProjectSettings, Ranker, RENDER_QUALITIES } from "@/lib/api";
 import type { Template } from "@/lib/templates";
 
 const DEFAULTS: ProjectSettings = {
@@ -53,6 +53,10 @@ export default function NewProjectForm() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templateId, setTemplateId] = useState<string>("");
   const userPicked = useRef(false); // não sobrescrever a escolha do usuário com o padrão do servidor
+  const [mode, setMode] = useState<"clips" | "download">("clips");
+  const [renderHeight, setRenderHeight] = useState(1920);
+  const [downloadHeight, setDownloadHeight] = useState(1080);
+  const qualityPicked = useRef(false);
 
   useEffect(() => {
     api<Template[]>("/templates")
@@ -68,6 +72,9 @@ export default function NewProjectForm() {
       .then((c) => {
         setCaps(c);
         if (!userPicked.current) setRanker(c.default_ranker);
+        if (!qualityPicked.current && RENDER_QUALITIES.some((q) => q.value === c.default_render_height)) {
+          setRenderHeight(c.default_render_height);
+        }
       })
       .catch(() => {});
   }, []);
@@ -82,6 +89,9 @@ export default function NewProjectForm() {
       ...s,
       ranker,
       template_id: templateId || null,
+      mode,
+      download_height: downloadHeight,
+      render_height: renderHeight,
       facecam: s.layout === "split" ? { ...CORNERS[corner], w: 0.28, h: 0.3 } : null,
     };
     try {
@@ -109,6 +119,21 @@ export default function NewProjectForm() {
 
   return (
     <form onSubmit={submit} className="card space-y-5 p-5">
+      <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="O que fazer">
+        {([
+          ["clips", "✂️  Gerar cortes com IA", "Encontra os melhores momentos e cria clipes verticais."],
+          ["download", "⬇️  Só baixar o vídeo", "Baixa o vídeo inteiro, com ou sem template aplicado."],
+        ] as const).map(([k, t, d]) => (
+          <button key={k} type="button" role="radio" aria-checked={mode === k} onClick={() => setMode(k)}
+            data-testid={`mode-${k}`}
+            className={`rounded-xl border p-3 text-left transition ${mode === k
+              ? "border-violet-400 bg-violet-500/15 shadow-glow" : "border-zinc-700/70 hover:bg-white/5"}`}>
+            <span className="block font-semibold text-white">{t}</span>
+            <span className="mt-0.5 block text-xs text-zinc-400">{d}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex gap-2">
         {(["url", "upload"] as const).map((k) => (
           <button key={k} type="button" onClick={() => setSource(k)}
@@ -139,12 +164,13 @@ export default function NewProjectForm() {
           <input id="title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
         <div>
-          <label className="label" htmlFor="game">Jogo (ajuda a IA)</label>
+          <label className="label" htmlFor="game">{mode === "clips" ? "Jogo (ajuda a IA)" : "Jogo (usado no {jogo} do template)"}</label>
           <input id="game" className="input" placeholder="Valorant, Free Fire, CS2…" value={s.game}
             onChange={(e) => set("game", e.target.value)} />
         </div>
       </div>
 
+      {mode === "clips" && (
       <div className="grid gap-4 sm:grid-cols-4">
         <div>
           <label className="label" htmlFor="min">Duração mín. (s)</label>
@@ -172,12 +198,13 @@ export default function NewProjectForm() {
           </select>
         </div>
       </div>
+      )}
 
       <div>
         <label className="label" htmlFor="template">Template (textos, fontes e molduras)</label>
         <div className="flex gap-2">
           <select id="template" className="input" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-            <option value="">Sem template (estilo simples)</option>
+            <option value="">{mode === "download" ? "Sem template (vídeo original)" : "Sem template (estilo simples)"}</option>
             {templates.map((t) => (
               <option key={t.id} value={t.id}>{t.name}{t.is_default ? " (padrão)" : ""}</option>
             ))}
@@ -186,6 +213,38 @@ export default function NewProjectForm() {
         </div>
       </div>
 
+      <div className="grid gap-4 sm:grid-cols-2">
+        {source === "url" && (
+          <div>
+            <label className="label" htmlFor="dl-quality">Qualidade do download</label>
+            <select id="dl-quality" className="input" value={downloadHeight}
+              onChange={(e) => setDownloadHeight(Number(e.target.value))}>
+              {DOWNLOAD_QUALITIES.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
+            </select>
+          </div>
+        )}
+        {(mode === "clips" || templateId) && (
+          <div>
+            <label className="label" htmlFor="quality">Qualidade do vídeo final</label>
+            <select id="quality" className="input" value={renderHeight}
+              onChange={(e) => { qualityPicked.current = true; setRenderHeight(Number(e.target.value)); }}>
+              {RENDER_QUALITIES.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+      {(mode === "clips" || templateId) && renderHeight > 1920 && (
+        <p className="-mt-2 text-xs text-amber-300">
+          Acima de 1080p a renderização fica bem mais lenta e os arquivos maiores. Só vale se o vídeo original tiver essa qualidade.
+        </p>
+      )}
+      {mode === "download" && !templateId && (
+        <p className="-mt-2 text-xs text-zinc-400">
+          Sem template, o vídeo é baixado como está (sem cortes nem conversão). Escolha um template para aplicar textos, moldura e formato.
+        </p>
+      )}
+
+      {mode === "clips" && (
       <div>
         <span className="label">Método de análise</span>
         <div className="grid gap-2 sm:grid-cols-3">
@@ -200,8 +259,11 @@ export default function NewProjectForm() {
         </div>
         <p className="mt-2 text-xs text-zinc-400">{rankerHint(ranker, caps)}</p>
       </div>
+      )}
 
+      {(mode === "clips" || templateId) && (
       <div className="grid gap-4 sm:grid-cols-3">
+        {mode === "clips" && (
         <div>
           <label className="label" htmlFor="layout">Layout vertical</label>
           <select id="layout" className="input" value={s.layout}
@@ -211,7 +273,8 @@ export default function NewProjectForm() {
             <option value="split">Webcam em cima + jogo embaixo</option>
           </select>
         </div>
-        {s.layout === "split" && (
+        )}
+        {mode === "clips" && s.layout === "split" && (
           <div>
             <label className="label" htmlFor="corner">Posição da webcam</label>
             <select id="corner" className="input" value={corner} onChange={(e) => setCorner(e.target.value)}>
@@ -227,10 +290,12 @@ export default function NewProjectForm() {
           Legendas automáticas
         </label>
       </div>
+      )}
 
-      {error && <p className="rounded-lg bg-red-950 px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && <p className="rounded-lg bg-red-500/15 px-3 py-2 text-sm text-danger ring-1 ring-red-400/30">{error}</p>}
       <button className="btn w-full sm:w-auto" disabled={busy}>
-        {busy ? (source === "upload" ? "Enviando…" : "Criando…") : "Gerar clipes"}
+        {busy ? (source === "upload" ? "Enviando…" : "Criando…")
+          : mode === "clips" ? "Gerar clipes" : templateId ? "Baixar e aplicar template" : "Baixar vídeo"}
       </button>
     </form>
   );

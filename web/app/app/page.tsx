@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import NewProjectForm from "@/components/NewProjectForm";
 import StatusBadge from "@/components/StatusBadge";
-import { api, fmtTime, Project } from "@/lib/api";
+import { api, fmtTime, isBusy, Project } from "@/lib/api";
 
 export default function Dashboard() {
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -20,7 +20,7 @@ export default function Dashboard() {
 
   // atualiza enquanto houver algo processando
   useEffect(() => {
-    if (!projects?.some((p) => p.status === "queued" || p.status === "processing")) return;
+    if (!projects?.some((p) => isBusy(p))) return;
     const t = setInterval(load, 4000);
     return () => clearInterval(t);
   }, [projects, load]);
@@ -45,7 +45,10 @@ export default function Dashboard() {
                 <Link href={`/app/project/?id=${p.id}`}
                   className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 transition hover:bg-white/5">
                   <div className="min-w-0">
-                    <p className="truncate font-medium">{p.title}</p>
+                    <p className="truncate font-medium">
+                      {p.settings?.mode === "download" && <span className="mr-2 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-300">DOWNLOAD</span>}
+                      {p.title}
+                    </p>
                     <p className="text-xs text-zinc-500">
                       {new Date(p.created_at).toLocaleString("pt-BR")}
                       {p.duration_s ? ` · ${fmtTime(p.duration_s)}` : ""}

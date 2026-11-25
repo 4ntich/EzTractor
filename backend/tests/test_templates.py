@@ -96,7 +96,8 @@ def test_frame_bars_and_output_size():
     assert {(b["y"], b["h"]) for b in bars[:2]} == {(0, 192), (1824, 96)} and bars[2]["w"] == 22
     assert output_size(_cfg(), 1920) == (1080, 1920)
     assert output_size(_cfg(width=1920, height=1080), 1280) == (1280, 720)
-    assert output_size(_cfg(width=1080, height=1080), 1920) == (1080, 1080)  # não aumenta além do template
+    assert output_size(_cfg(width=1080, height=1080), 1920) == (1920, 1920)  # a qualidade escolhida manda
+    assert output_size(_cfg(), 3840) == (2160, 3840)
 
 
 def test_normalize_fills_new_fields_for_old_templates():
@@ -164,7 +165,7 @@ def test_project_uses_default_template_and_apply_to_all(client, sample_video):
             s = _probe_video(storage.path_for(db.get(Clip, cid).render_key))
         return s["width"], s["height"]
 
-    assert clip_size(p["clips"][0]["id"]) == (1080, 1080)
+    assert clip_size(p["clips"][0]["id"]) == (1280, 1280)  # 1:1 na qualidade do app nos testes (1280)
 
     # trocar para "sem template" re-renderiza todos no formato vertical padrão (720x1280 nos testes)
     r = client.post(f"/projects/{p['id']}/apply-template", json={"template_id": None})

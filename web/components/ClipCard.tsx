@@ -94,7 +94,7 @@ export default function ClipCard({ clip, rank, onChange }: { clip: Clip; rank: n
             <p className="line-clamp-3 text-xs text-zinc-400">{clip.reason}</p>
             <div className="mt-auto flex gap-2 pt-2">
               {clip.video_url && (
-                <a className="btn flex-1" href={fileUrl(clip.video_url)} download>
+                <a className="btn flex-1" href={fileUrl(clip.download_url ?? clip.video_url)} download>
                   Baixar
                 </a>
               )}

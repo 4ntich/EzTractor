@@ -110,7 +110,8 @@ def build_filter(spec: RenderSpec, src_w: int, src_h: int) -> str:
     return graph
 
 
-def render_clip(src: Path, dst: Path, spec: RenderSpec, src_w: int, src_h: int, has_audio: bool) -> Path:
+def render_clip(src: Path, dst: Path, spec: RenderSpec, src_w: int, src_h: int, has_audio: bool,
+                on_progress=None) -> Path:
     duration = max(0.1, spec.end - spec.start)
     cmd = [
         "ffmpeg", "-y", "-v", "error",
@@ -122,9 +123,10 @@ def render_clip(src: Path, dst: Path, spec: RenderSpec, src_w: int, src_h: int, 
         cmd += ["-map", "0:a:0", "-c:a", "aac", "-b:a", "128k"]
     cmd += [
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-pix_fmt", "yuv420p",
-        "-r", "30", "-t", f"{duration:.3f}", "-movflags", "+faststart", str(dst),
+        "-r", "30", "-t", f"{duration:.3f}", "-movflags", "+faststart",
+        "-progress", "pipe:1", "-nostats", str(dst),
     ]
-    run(cmd)
+    run(cmd, on_progress=on_progress, duration=duration)
     return dst
 
 

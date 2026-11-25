@@ -33,6 +33,14 @@ Abra **http://localhost:8000**. Os vídeos, clipes e o banco ficam no volume `ez
 - Para atualizar: `docker compose pull && docker compose up -d`.
 - Na primeira transcrição, o modelo Whisper (cerca de 500 MB) é baixado uma vez e fica salvo.
 
+## Projetos: cortes ou só download
+
+- **Gerar cortes com IA:** encontra os melhores momentos e cria clipes verticais.
+- **Só baixar o vídeo:** baixa o vídeo do link na qualidade escolhida (até 4K ou a melhor disponível). Sem template, você recebe o arquivo original. Com template, o vídeo inteiro é renderizado no formato do template, com textos, moldura e legendas.
+- **Qualidade do vídeo final** escolhida na tela, por projeto: 360p, 480p, 720p, 1080p, 1440p ou 4K.
+- **Pausar, Continuar e Cancelar** durante o download, a transcrição e a renderização. Na pausa nada é processado (o ffmpeg fica suspenso). No cancelamento os clipes já prontos são mantidos e dá para **Reprocessar** depois. Se o app for fechado no meio, o projeto aparece como interrompido para reprocessar.
+- **⬇ Vídeo original:** baixa o vídeo de origem de qualquer projeto. Os clipes baixam com o título como nome do arquivo.
+
 ## Métodos de análise (escolha por projeto, no site)
 
 | Método | Custo | O que faz |
@@ -89,7 +97,8 @@ O editor e o vídeo usam as mesmas fontes e a mesma escala, calibrada fonte a fo
 | `EZT_JWT_SECRET` | valor de dev | Troque se usar senha |
 | `EZT_TRANSCRIBER` | `faster_whisper` | `none` desliga a transcrição (sem legendas, mais rápido) |
 | `EZT_WHISPER_MODEL` | `small` | `tiny`/`base` (rápidos) … `large-v3` (melhor) |
-| `EZT_RENDER_HEIGHT` | `1920` | `1920` = 1080×1920; `1280` = 720×1280 (mais rápido) |
+| `EZT_WHISPER_DEVICE` | `auto` | `auto` usa a placa NVIDIA se o CUDA 12 + cuDNN 9 estiverem instalados, senão o processador. `cpu` ou `cuda` forçam |
+| `EZT_RENDER_HEIGHT` | `1920` | Qualidade padrão (lado maior): 640, 854, 1280, 1920, 2560, 3840. Também escolhida por projeto na tela |
 | `EZT_MAX_VIDEO_MINUTES` | `600` | Duração máxima do vídeo |
 
 ## Deploy pelo GitHub

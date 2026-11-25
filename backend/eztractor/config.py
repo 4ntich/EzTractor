@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     # IA
     transcriber: str = "faster_whisper"  # faster_whisper | none
     whisper_model: str = "small"
+    # auto = placa de vídeo NVIDIA se as bibliotecas CUDA estiverem instaladas, senão processador | cpu | cuda
+    whisper_device: str = "auto"
     # Método padrão de análise: heuristic (grátis) | ollama (IA local, grátis) | claude (API paga)
     ranker: str = "heuristic"
     claude_model: str = "claude-opus-5-5"

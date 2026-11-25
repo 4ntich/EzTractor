@@ -13,6 +13,7 @@ export type Clip = {
   render_status: "pending" | "ready" | "failed";
   ranker: Ranker;
   video_url: string | null;
+  download_url?: string | null;
   thumb_url: string | null;
 };
 
@@ -20,6 +21,7 @@ export type Ranker = "heuristic" | "ollama" | "claude";
 
 export type Capabilities = {
   default_ranker: Ranker;
+  default_render_height: number;
   claude_configured: boolean;
   ollama: { online: boolean; model: string; model_ready: boolean };
 };
@@ -41,6 +43,9 @@ export type ProjectSettings = {
   captions: boolean;
   ranker: Ranker | null;
   template_id?: string | null;
+  mode?: "clips" | "download";
+  download_height?: number;
+  render_height?: number | null;
 };
 
 export type Project = {
@@ -49,7 +54,9 @@ export type Project = {
   source_type: "upload" | "url";
   source_url: string | null;
   duration_s: number | null;
-  status: "queued" | "processing" | "ready" | "failed";
+  status: "queued" | "processing" | "paused" | "cancelled" | "ready" | "failed";
+  control: "run" | "pause" | "cancel";
+  source_file_url: string | null;
   stage: string;
   progress: number;
   error: string | null;
@@ -116,3 +123,27 @@ export function fmtTime(s: number): string {
   const ss = String(sec).padStart(2, "0");
   return h ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
 }
+
+// qualidade do vídeo final (lado maior em px) — espelha RENDER_QUALITIES do backend
+export const RENDER_QUALITIES: { value: number; label: string }[] = [
+  { value: 640, label: "360p · rascunho, muito rápido" },
+  { value: 854, label: "480p · rápido" },
+  { value: 1280, label: "720p · HD" },
+  { value: 1920, label: "1080p · Full HD (recomendado)" },
+  { value: 2560, label: "1440p · 2K" },
+  { value: 3840, label: "2160p · 4K (lento)" },
+];
+
+// qualidade máxima ao baixar de um link (0 = a melhor disponível)
+export const DOWNLOAD_QUALITIES: { value: number; label: string }[] = [
+  { value: 0, label: "Melhor disponível" },
+  { value: 2160, label: "Até 4K (2160p)" },
+  { value: 1440, label: "Até 2K (1440p)" },
+  { value: 1080, label: "Até 1080p" },
+  { value: 720, label: "Até 720p" },
+  { value: 480, label: "Até 480p" },
+  { value: 360, label: "Até 360p" },
+];
+
+export const isBusy = (p: Pick<Project, "status">) =>
+  p.status === "queued" || p.status === "processing" || p.status === "paused";

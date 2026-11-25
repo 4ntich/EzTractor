@@ -1,10 +1,12 @@
 import json
 import os
+import re
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 import jwt
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, UploadFile, status
@@ -20,7 +22,7 @@ from ..auth import check_password, create_token, password_required, require_auth
 from ..config import get_settings
 from ..db import get_db, init_db
 from ..fonts import catalog as fonts_catalog
-from ..models import Clip, Project, ProjectStatus, Template
+from ..models import ACTIVE_STATUSES, Clip, Project, ProjectStatus, Template
 from ..pipeline.media import MediaError, probe
 from ..pipeline.template_render import VARIABLES, normalize, render_preview
 from ..presets import PRESETS
@@ -48,16 +50,40 @@ ALLOWED_EXT = {".mp4", ".mov", ".mkv", ".webm", ".flv", ".avi"}
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     init_db()
+    recover_interrupted()
     yield
 
 
+def recover_interrupted() -> None:
+    """No modo inline o processamento roda dentro do app: se ele foi fechado no meio, o trabalho
+    morreu junto. Marca esses projetos para o usuário reprocessar (em vez de ficarem "rodando" para sempre)."""
+    if get_settings().queue_mode != "inline":
+        return
+    from ..db import session_factory
+
+    with session_factory()() as db:
+        for p in db.scalars(select(Project).where(Project.status.in_(ACTIVE_STATUSES))):
+            p.status, p.control = ProjectStatus.failed.value, "run"
+            p.error = "Interrompido: o EzTractor foi fechado durante o processamento. Clique em Reprocessar."
+        db.commit()
+
+
 # ---------- arquivos (URLs assinadas, pois <video> não envia header Authorization)
-def sign(key: str | None) -> str | None:
+def sign(key: str | None, download_name: str | None = None) -> str | None:
     if not key:
         return None
     exp = datetime.now(timezone.utc) + timedelta(hours=6)
     sig = jwt.encode({"k": key, "exp": exp, "p": "file"}, get_settings().jwt_secret, algorithm="HS256")
-    return f"/files/{key}?sig={sig}"
+    url = f"/files/{key}?sig={sig}"
+    if download_name:
+        url += "&dl=" + quote(download_name)
+    return url
+
+
+def safe_filename(title: str, ext: str) -> str:
+    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', " ", title or "")
+    name = re.sub(r"\s+", " ", name).strip(" .")[:120] or "video"
+    return f"{name}{ext}"
 
 
 def clip_out(c: Clip) -> ClipOut:
@@ -66,6 +92,7 @@ def clip_out(c: Clip) -> ClipOut:
         id=c.id, start_s=c.start_s, end_s=c.end_s, score=c.score, title=c.title, hook=c.hook,
         reason=c.reason, render_status=c.render_status, ranker=(c.signals or {}).get("ranker", "heuristic"),
         video_url=sign(c.render_key) if ready else None,
+        download_url=sign(c.render_key, safe_filename(c.title or "clipe", ".mp4")) if ready else None,
         thumb_url=sign(c.thumb_key) if ready else None,
     )
 
@@ -74,7 +101,9 @@ def project_out(p: Project, with_clips: bool = True) -> ProjectOut:
     return ProjectOut(
         id=p.id, title=p.title, source_type=p.source_type, source_url=p.source_url,
         duration_s=p.duration_s, status=p.status, stage=p.stage, progress=p.progress, error=p.error,
-        settings=p.settings or {}, created_at=p.created_at,
+        settings=p.settings or {}, control=p.control or "run", created_at=p.created_at,
+        source_file_url=sign(p.source_key, safe_filename(p.title, Path(p.source_key).suffix))
+        if p.source_key and storage.path_for(p.source_key).exists() else None,
         clips=[clip_out(c) for c in p.clips] if with_clips else [],
     )
 
@@ -111,6 +140,7 @@ def capabilities():
     """Quais métodos de análise estão disponíveis agora (para o formulário do front)."""
     return CapabilitiesOut(
         default_ranker=get_settings().ranker,
+        default_render_height=get_settings().render_height,
         claude_configured=bool(os.environ.get("ANTHROPIC_API_KEY")),
         ollama=ollama_status(),
     )
@@ -179,19 +209,51 @@ def get_project(project_id: str, db: Session = Depends(get_db)):
 @api.post("/projects/{project_id}/reprocess", response_model=ProjectOut)
 def reprocess(project_id: str, db: Session = Depends(get_db)):
     p = get_project_or_404(db, project_id)
-    if p.status in (ProjectStatus.queued.value, ProjectStatus.processing.value):
+    if p.status in ACTIVE_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "projeto já está em processamento")
-    p.status, p.stage, p.progress, p.error = ProjectStatus.queued.value, "", 0, None
+    p.status, p.stage, p.progress, p.error, p.control = ProjectStatus.queued.value, "", 0, None, "run"
     db.commit()
     enqueue_project(p.id)
+    return project_out(p)
+
+
+@api.post("/projects/{project_id}/pause", response_model=ProjectOut)
+def pause_project(project_id: str, db: Session = Depends(get_db)):
+    """Pausa o processamento (o ffmpeg/download/transcrição param onde estão)."""
+    p = get_project_or_404(db, project_id)
+    if p.status not in ACTIVE_STATUSES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "o projeto não está em processamento")
+    p.control = "pause"
+    db.commit()
+    return project_out(p)
+
+
+@api.post("/projects/{project_id}/resume", response_model=ProjectOut)
+def resume_project(project_id: str, db: Session = Depends(get_db)):
+    p = get_project_or_404(db, project_id)
+    if p.control != "pause":
+        raise HTTPException(status.HTTP_409_CONFLICT, "o projeto não está pausado")
+    p.control = "run"
+    db.commit()
+    return project_out(p)
+
+
+@api.post("/projects/{project_id}/cancel", response_model=ProjectOut)
+def cancel_project(project_id: str, db: Session = Depends(get_db)):
+    """Cancela o processamento. Clipes já prontos são mantidos; dá para reprocessar depois."""
+    p = get_project_or_404(db, project_id)
+    if p.status not in ACTIVE_STATUSES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "o projeto não está em processamento")
+    p.control = "cancel"
+    db.commit()
     return project_out(p)
 
 
 @api.delete("/projects/{project_id}", status_code=204)
 def delete_project(project_id: str, db: Session = Depends(get_db)):
     p = get_project_or_404(db, project_id)
-    if p.status == ProjectStatus.processing.value:
-        raise HTTPException(status.HTTP_409_CONFLICT, "aguarde o processamento terminar")
+    if p.status in ACTIVE_STATUSES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "cancele o processamento antes de excluir")
     db.delete(p)
     db.commit()
     shutil.rmtree(storage.path_for(storage.project_dir(project_id)), ignore_errors=True)
@@ -307,7 +369,7 @@ def preview_template(body: TemplatePreviewIn, db: Session = Depends(get_db)):
 def apply_template(project_id: str, body: ApplyTemplateIn, db: Session = Depends(get_db)):
     """Troca o template do projeto e renderiza de novo todos os clipes."""
     p = get_project_or_404(db, project_id)
-    if p.status in (ProjectStatus.queued.value, ProjectStatus.processing.value):
+    if p.status in ACTIVE_STATUSES:
         raise HTTPException(status.HTTP_409_CONFLICT, "aguarde o processamento terminar")
     if body.template_id and db.get(Template, body.template_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "template não encontrado")
@@ -345,7 +407,7 @@ def create_app() -> FastAPI:
         return TokenOut(token=create_token())
 
     @app.get("/files/{key:path}")
-    def get_file(key: str, sig: str):
+    def get_file(key: str, sig: str, dl: str | None = None):
         try:
             data = jwt.decode(sig, get_settings().jwt_secret, algorithms=["HS256"])
         except jwt.PyJWTError:
@@ -355,6 +417,8 @@ def create_app() -> FastAPI:
         path = storage.path_for(key)
         if not path.exists():
             raise HTTPException(status.HTTP_404_NOT_FOUND, "arquivo não encontrado")
+        if dl:  # botão "baixar": salva com o nome do vídeo
+            return FileResponse(path, filename=dl)
         return FileResponse(path)
 
     app.include_router(api)

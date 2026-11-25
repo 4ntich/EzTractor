@@ -3,6 +3,8 @@
 import json
 import subprocess
 import sys
+import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,14 +25,53 @@ class MediaInfo:
 _NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 
 
-def run(cmd: list[str], timeout: float | None = None) -> subprocess.CompletedProcess:
-    # utf-8 explícito: no Windows o padrão seria cp1252 e a saída do ffmpeg quebraria a leitura
-    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                          timeout=timeout, **_NO_WINDOW)
+def run(cmd: list[str], timeout: float | None = None, on_progress=None,
+        duration: float | None = None) -> subprocess.CompletedProcess:
+    """Executa ffmpeg/ffprobe. Se houver um processamento ativo (control), respeita pausar/cancelar:
+    na pausa o processo é suspenso, no cancelamento é encerrado e `Cancelled` é lançado."""
+    from ..control import Cancelled, current
+
+    ctrl = current()
+    # saída em arquivos temporários: sem risco de travar com saídas grandes (ex.: showinfo de 4 h de vídeo)
+    with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
+        proc = subprocess.Popen(cmd, stdout=out, stderr=err, stdin=subprocess.DEVNULL, **_NO_WINDOW)
+        start = time.monotonic()
+        try:
+            while True:
+                try:
+                    proc.wait(timeout=0.25)
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
+                if timeout is not None and time.monotonic() - start > timeout:
+                    raise MediaError(f"{cmd[0]} demorou mais que {timeout:.0f}s")
+                if ctrl is not None:
+                    ctrl.check(proc)
+                if on_progress and duration:  # lê "out_time_us=" escrito por `-progress pipe:1`
+                    out.seek(0, 2)
+                    size = out.tell()
+                    out.seek(max(0, size - 4096))
+                    tail = out.read().decode("ascii", errors="ignore")
+                    marks = [ln for ln in tail.splitlines() if ln.startswith("out_time_us=")]
+                    if marks:
+                        try:
+                            on_progress(min(1.0, int(marks[-1].split("=")[1]) / 1e6 / duration))
+                        except ValueError:
+                            pass
+        except BaseException:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+            raise
+        out.seek(0)
+        err.seek(0)
+        stdout = out.read().decode("utf-8", errors="replace")
+        stderr = err.read().decode("utf-8", errors="replace")
     if proc.returncode != 0:
-        tail = (proc.stderr or "")[-1500:]
-        raise MediaError(f"{cmd[0]} falhou ({proc.returncode}): {tail}")
-    return proc
+        if ctrl is not None and ctrl.state(fresh=True) == "cancel":
+            raise Cancelled()
+        raise MediaError(f"{cmd[0]} falhou ({proc.returncode}): {stderr[-1500:]}")
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
 
 def probe(path: Path) -> MediaInfo:

@@ -23,8 +23,13 @@ class OllamaStatus(BaseModel):
 
 class CapabilitiesOut(BaseModel):
     default_ranker: str
+    default_render_height: int
     claude_configured: bool
     ollama: OllamaStatus
+
+
+# lado maior do vídeo final -> rótulo (9:16: 640 = 360x640 … 3840 = 2160x3840)
+RENDER_QUALITIES = {640: "360p", 854: "480p", 1280: "720p", 1920: "1080p", 2560: "1440p", 3840: "2160p (4K)"}
 
 
 class FacecamRect(BaseModel):
@@ -49,6 +54,26 @@ class ProjectSettings(BaseModel):
     ranker: str | None = Field(None, pattern="^(heuristic|ollama|claude)$")
     # Template visual. Se o campo não for enviado, usa o template marcado como padrão.
     template_id: str | None = None
+    # "clips" = gerar cortes com IA | "download" = só baixar o vídeo (com ou sem template)
+    mode: str = Field("clips", pattern="^(clips|download)$")
+    # altura máxima ao baixar de um link (0 = melhor disponível)
+    download_height: int = Field(1080)
+    # qualidade do vídeo final (lado maior em px). None = padrão do app (EZT_RENDER_HEIGHT)
+    render_height: int | None = None
+
+    @field_validator("download_height")
+    @classmethod
+    def _height(cls, v: int) -> int:
+        if v not in (0, 2160, 1440, 1080, 720, 480, 360):
+            raise ValueError("qualidade inválida")
+        return v
+
+    @field_validator("render_height")
+    @classmethod
+    def _render_height(cls, v: int | None) -> int | None:
+        if v is not None and v not in RENDER_QUALITIES:
+            raise ValueError("qualidade de saída inválida")
+        return v
 
     @model_validator(mode="after")
     def _check(self):
@@ -84,6 +109,7 @@ class ClipOut(BaseModel):
     render_status: str
     ranker: str = "heuristic"
     video_url: str | None = None
+    download_url: str | None = None  # mesmo vídeo, salvo com o título do clipe
     thumb_url: str | None = None
 
 
@@ -98,6 +124,8 @@ class ProjectOut(BaseModel):
     progress: int
     error: str | None
     settings: dict
+    control: str = "run"
+    source_file_url: str | None = None  # vídeo original (para baixar)
     created_at: datetime
     clips: list[ClipOut] = []
 

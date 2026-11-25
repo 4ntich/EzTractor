@@ -240,9 +240,9 @@ def frame_bars(cfg: dict, out_w: int, out_h: int) -> list[dict]:
 
 
 def output_size(cfg: dict, max_side: int) -> tuple[int, int]:
-    """Tamanho final do vídeo: proporção do template, lado maior limitado a max_side."""
+    """Tamanho final do vídeo: proporção do template com o lado maior = max_side."""
     W, H = int(cfg["width"]), int(cfg["height"])
-    f = min(1.0, max_side / max(W, H))
+    f = max_side / max(W, H)  # a qualidade escolhida define o tamanho (textos escalam junto)
     return max(2, int(W * f) // 2 * 2), max(2, int(H * f) // 2 * 2)
 
 
