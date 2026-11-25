@@ -212,3 +212,34 @@ def test_ollama_offline_falls_back(monkeypatch):
     out, method = ranker.rank(_fake_cands(), [], 600, "", 15, 45, method="ollama")
     assert method == "heuristic" and len(out) == 2 and out[0].title
     assert ranker.ollama_status()["online"] is False
+
+
+def test_transcribe_passes_decoded_audio_not_path(tmp_path, monkeypatch):
+    """Regressão: faster-whisper + PyAV novo falhava ao abrir o arquivo (metadata_errors)."""
+    import subprocess
+    from types import SimpleNamespace
+
+    from eztractor.pipeline import transcribe as tr
+
+    wav = tmp_path / "a.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=2",
+                    "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(wav)], check=True)
+    got = {}
+
+    class FakeModel:
+        def transcribe(self, audio, **kw):
+            got["audio"] = audio
+            word = SimpleNamespace(word=" oi", start=0.1, end=0.4)
+            return iter([SimpleNamespace(words=[word])]), SimpleNamespace(language="pt")
+
+    monkeypatch.setenv("EZT_TRANSCRIBER", "faster_whisper")
+    from eztractor import config
+
+    config.get_settings.cache_clear()
+    monkeypatch.setattr(tr, "_load_model", lambda: FakeModel())
+    words, lang = tr.transcribe(wav)
+    config.get_settings.cache_clear()
+
+    assert isinstance(got["audio"], np.ndarray) and got["audio"].dtype == np.float32
+    assert 31000 < got["audio"].size < 33000 and float(np.abs(got["audio"]).max()) <= 1.0
+    assert words == [{"w": "oi", "start": 0.1, "end": 0.4}] and lang == "pt"
