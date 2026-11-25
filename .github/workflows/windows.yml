@@ -150,13 +150,15 @@ jobs:
             }
           }
 
-          # 1) garante o release (reaproveita se ja existir; senao cria)
+          # 1) garante o release (reaproveita se ja existir; senao cria). make_latest e STRING na API.
           $relId = Try-Gh {
             $r = gh api "repos/$env:REPO/releases/tags/$tag" 2>$null | ConvertFrom-Json
             if ($r.id) { return $r.id }
-            $c = gh api -X POST "repos/$env:REPO/releases" -f "tag_name=$tag" -f "target_commitish=$env:SHA" -f "name=EzTractor $env:VER" -f "body=$body" -F "make_latest=true" | ConvertFrom-Json
+            $c = gh api -X POST "repos/$env:REPO/releases" -f "tag_name=$tag" -f "target_commitish=$env:SHA" -f "name=EzTractor $env:VER" -f "body=$body" -f "make_latest=true" | ConvertFrom-Json
+            if (-not $c.id) { throw "criacao do release nao retornou id" }
             return $c.id
           }
+          if (-not $relId) { throw "nao foi possivel obter o id do release" }
           Write-Host "release id: $relId"
 
           # 2) remove um asset antigo de mesmo nome (idempotente) e envia o novo via upload API
