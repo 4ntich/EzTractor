@@ -157,8 +157,71 @@ def start_server(port: int, log_file: Path):
     raise RuntimeError("o servidor não respondeu")
 
 
-# ---------------------------------------------------------------- janela
-def run_gui() -> None:
+# ---------------------------------------------------------------- janela própria (WebView2)
+def _open_path(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if hasattr(os, "startfile"):
+        os.startfile(str(path))  # type: ignore[attr-defined]
+
+
+def run_app(smoke: bool = False) -> int:
+    """Abre o EzTractor numa janela própria (sem navegador). Retorna o código de saída."""
+    import webview
+    from webview.menu import Menu, MenuAction, MenuSeparator
+
+    port = already_running()
+    server = None
+    if port is None:
+        d = configure_env()
+        port = free_port()
+        server = start_server(port, data_dir() / "eztractor.log")
+    else:
+        d = data_dir()
+    url = f"http://127.0.0.1:{port}/app/"
+
+    webview.settings["ALLOW_DOWNLOADS"] = True  # botões "Baixar" abrem o "Salvar como"
+    webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
+    menu = [Menu(APP_NAME, [
+        MenuAction("Pasta dos vídeos", lambda: _open_path(d / "media" / ".")),
+        MenuAction("Configurações (config.env)", lambda: _open_path(data_dir() / "config.env")),
+        MenuSeparator(),
+        MenuAction("Abrir no navegador", lambda: webbrowser.open(url)),
+        MenuSeparator(),
+        MenuAction("Sair", lambda: window.destroy()),
+    ])]
+    window = webview.create_window(APP_NAME, url, width=1320, height=880, min_size=(420, 600),
+                                   background_color="#04313B", menu=menu, text_select=True)
+    result = {"code": 0}
+
+    def smoke_check():  # --gui-smoke: confirma que a janela abriu e o app carregou dentro dela
+        log = data_dir() / "gui-smoke.log"
+        try:
+            window.events.loaded.wait(30)
+            ok = False
+            for _ in range(60):
+                info = window.evaluate_js("document.title + '|' + !!document.querySelector('nav')")
+                if info and str(info).startswith("EzTractor") and str(info).endswith("true"):
+                    ok = True
+                    break
+                time.sleep(0.5)
+            log.write_text(f"janela: {info}\nGUI SMOKE {'OK' if ok else 'FALHOU'}", encoding="utf-8")
+            result["code"] = 0 if ok else 1
+        except Exception:
+            log.write_text("GUI SMOKE FALHOU\n" + traceback.format_exc(), encoding="utf-8")
+            result["code"] = 1
+        finally:
+            window.destroy()
+
+    webview.start(smoke_check if smoke else None, gui="edgechromium" if sys.platform == "win32" else None,
+                  private_mode=False, storage_path=str(data_dir() / "webview"))
+    if server is not None:
+        server.should_exit = True
+        time.sleep(0.3)
+    return result["code"]
+
+
+def run_browser_fallback() -> None:
+    """Sem WebView2 (raro no Windows 10/11): abre no navegador com uma janelinha de controle."""
     port = already_running()
     if port:  # já aberto: só mostra no navegador
         webbrowser.open(f"http://127.0.0.1:{port}/app/")
@@ -334,9 +397,16 @@ def selftest() -> int:
 
 def main() -> None:
     if "--selftest" in sys.argv:
-        code = selftest()
-        os._exit(code)
-    run_gui()
+        os._exit(selftest())
+    if "--gui-smoke" in sys.argv:
+        os._exit(run_app(smoke=True))
+    try:
+        code = run_app()
+    except Exception:
+        (data_dir() / "eztractor.log").open("a", encoding="utf-8").write(traceback.format_exc())
+        run_browser_fallback()
+        code = 0
+    os._exit(code)
 
 
 if __name__ == "__main__":

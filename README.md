@@ -8,7 +8,7 @@ App **de uso pessoal**: sem cadastro, sem créditos e sem marca d'água. **Funci
 
 1. Abra **Releases** no GitHub (https://github.com/4ntich/EzTractor/releases) e baixe o `EzTractor-Setup-<versão>.exe`.
 2. Execute. Não precisa ser administrador nem ter Docker. Se aparecer "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo** (o app não é assinado digitalmente).
-3. Abra o **EzTractor** pelo menu Iniciar. Uma janelinha mostra que ele está rodando e o app abre no navegador.
+3. Abra o **EzTractor** pelo menu Iniciar. Ele abre numa **janela própria**, sem navegador e sem GitHub (usa o WebView2, que já vem no Windows 10 e 11). O menu **EzTractor** tem pasta dos vídeos, configurações e "abrir no navegador". Fechar a janela encerra o app.
 
 Os vídeos, projetos e configurações ficam em `%LOCALAPPDATA%\EzTractor` (o botão **Configurações** da janelinha abre o `config.env`). Desinstalar não apaga esses dados.
 

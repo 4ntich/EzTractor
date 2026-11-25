@@ -29,7 +29,8 @@ hiddenimports = _ezt + [
     "anthropic", "httpx", "yt_dlp", "PIL.ImageFont", "sqlalchemy.dialects.sqlite", "python_multipart",
     "tkinter", "tkinter.messagebox",
 ]
-for pkg in ("faster_whisper", "ctranslate2", "onnxruntime", "tokenizers", "av", "yt_dlp"):
+hiddenimports += ["webview", "webview.menu", "webview.platforms.edgechromium", "webview.platforms.winforms", "clr"]
+for pkg in ("faster_whisper", "ctranslate2", "onnxruntime", "tokenizers", "av", "yt_dlp", "webview"):
     try:
         d, b, h = collect_all(pkg)
         datas += d
