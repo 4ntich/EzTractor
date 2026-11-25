@@ -1,4 +1,6 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Em produção o site é servido pela própria API (mesma origem) => URL vazia.
+// Em desenvolvimento (`npm run dev`) aponta para a API local, ver .env.development.
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export type Clip = {
   id: string;
@@ -9,8 +11,23 @@ export type Clip = {
   hook: string;
   reason: string;
   render_status: "pending" | "ready" | "failed";
+  ranker: Ranker;
   video_url: string | null;
   thumb_url: string | null;
+};
+
+export type Ranker = "heuristic" | "ollama" | "claude";
+
+export type Capabilities = {
+  default_ranker: Ranker;
+  claude_configured: boolean;
+  ollama: { online: boolean; model: string; model_ready: boolean };
+};
+
+export const RANKER_LABEL: Record<Ranker, string> = {
+  heuristic: "Sinais",
+  ollama: "IA local",
+  claude: "Claude",
 };
 
 export type ProjectSettings = {
@@ -22,6 +39,7 @@ export type ProjectSettings = {
   facecam: { x: number; y: number; w: number; h: number } | null;
   game: string;
   captions: boolean;
+  ranker: Ranker | null;
 };
 
 export type Project = {

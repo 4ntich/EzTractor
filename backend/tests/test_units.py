@@ -132,3 +132,83 @@ def test_candidate_extends_to_cover_whole_climax():
     sig = Signals(audio, np.zeros(n), np.zeros(n), np.zeros(n))
     top = generate(sig, n, [], 8, 15, limit=3)[0]
     assert top.start <= 40 and top.end >= 47 and top.duration <= 15
+
+
+# ---------------------------------------------------------------- títulos/ganchos sem IA
+def test_headline_uses_hype_phrase_near_peak():
+    from eztractor.pipeline.headlines import make_headline
+
+    words = [
+        {"w": "vou", "start": 10.0, "end": 10.2}, {"w": "entrar", "start": 10.3, "end": 10.6},
+        {"w": "no", "start": 10.7, "end": 10.8}, {"w": "bomb", "start": 10.9, "end": 11.2},
+        {"w": "meu", "start": 14.0, "end": 14.2}, {"w": "deus", "start": 14.3, "end": 14.6},
+        {"w": "que", "start": 14.7, "end": 14.8}, {"w": "clutch", "start": 14.9, "end": 15.4},
+    ]
+    stats = {"audio_peak_z": 3.1, "scene_cuts": 2, "hype_words": 2, "words": 8, "peak_t": 15.0}
+    title, hook, reason = make_headline(words, stats, game="CS2", language="pt")
+    assert hook == "Meu deus que clutch!"
+    assert title == "Meu deus que clutch | CS2"
+    assert "3.1σ" in reason and len(hook) <= 51 and len(title) <= 60
+
+
+def test_headline_templates_without_speech_by_language():
+    from eztractor.pipeline.headlines import make_headline
+
+    loud = {"audio_peak_z": 3.0, "scene_cuts": 0, "hype_words": 0, "words": 0}
+    assert make_headline([], loud, language="pt")[:2] == ("Reação explosiva", "Espera o final…")
+    assert make_headline([], loud, language="en")[:2] == ("Explosive reaction", "Wait for the end…")
+    busy = {"audio_peak_z": 0.5, "scene_cuts": 5, "hype_words": 0, "words": 0}
+    assert make_headline([], busy, game="Valorant", language="es")[0] == "Acción sin parar | Valorant"
+
+
+def test_headline_truncates_long_speech():
+    from eztractor.pipeline.headlines import make_headline
+
+    words = [{"w": f"palavra{i}!", "start": i * 0.3, "end": i * 0.3 + 0.2} for i in range(1)] + [
+        {"w": "x" * 20, "start": 1 + i * 0.3, "end": 1.2 + i * 0.3} for i in range(10)]
+    title, hook, _ = make_headline(words, {"peak_t": 2.0, "words": 11}, language="pt")
+    assert len(title) <= 60 and len(hook) <= 51
+
+
+# ---------------------------------------------------------------- Ollama
+def _fake_cands():
+    from eztractor.pipeline.candidates import Candidate
+
+    return [Candidate(0, 10, 30, 1.0, {"peak_t": 20.0}), Candidate(1, 100, 130, 2.0, {"peak_t": 120.0})]
+
+
+def test_ollama_rank_sends_schema_and_parses(monkeypatch):
+    import httpx
+
+    from eztractor.pipeline import ranker
+
+    sent = {}
+
+    def fake_post(url, json=None, timeout=None):
+        sent.update(url=url, body=json)
+        content = '{"clips":[{"candidate_id":0,"score":88,"title":"Ace","hook":"OLHA","reason":"r","start":10,"end":30},' \
+                  '{"candidate_id":1,"score":"ruim","title":"x","hook":"","reason":"","start":0,"end":1}]}'
+        return httpx.Response(200, json={"message": {"content": content}}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    out, method = ranker.rank(_fake_cands(), [], 600, "", 15, 45, method="ollama")
+    assert method == "ollama"
+    assert sent["url"].endswith("/api/chat") and sent["body"]["format"]["type"] == "object"
+    assert sent["body"]["stream"] is False
+    assert out[0].candidate_id == 0 and out[0].score == 88 and out[0].hook == "OLHA"
+    assert {r.candidate_id for r in out} == {0, 1}  # item inválido volta pela heurística
+
+
+def test_ollama_offline_falls_back(monkeypatch):
+    import httpx
+
+    from eztractor.pipeline import ranker
+
+    def down(*a, **k):
+        raise httpx.ConnectError("recusado")
+
+    monkeypatch.setattr(httpx, "post", down)
+    monkeypatch.setattr(httpx, "get", down)
+    out, method = ranker.rank(_fake_cands(), [], 600, "", 15, 45, method="ollama")
+    assert method == "heuristic" and len(out) == 2 and out[0].title
+    assert ranker.ollama_status()["online"] is False

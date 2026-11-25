@@ -78,3 +78,43 @@ def test_rejects_bad_extension_and_reports_failed_download(client):
     assert r.status_code == 201
     p = client.get(f"/projects/{r.json()['id']}").json()
     assert p["status"] == "failed" and "baixar" in p["error"]
+
+
+def test_capabilities_and_ranker_per_project(client, sample_video, monkeypatch):
+    import httpx
+
+    def down(*a, **k):
+        raise httpx.ConnectError("off")
+
+    monkeypatch.setattr(httpx, "get", down)
+    monkeypatch.setattr(httpx, "post", down)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    caps = client.get("/capabilities").json()
+    assert caps["default_ranker"] == "heuristic" and caps["claude_configured"] is False
+    assert caps["ollama"]["online"] is False
+
+    with open(sample_video, "rb") as f:
+        r = client.post("/projects/upload", files={"file": ("x.mp4", f)}, data={"settings": json.dumps(
+            {"ranker": "ollama", "max_clips": 1, "clip_min_s": 5, "clip_max_s": 10, "game": "Valorant"})})
+    p = client.get(f"/projects/{r.json()['id']}").json()
+    assert p["status"] == "ready" and p["settings"]["ranker"] == "ollama"
+    clip = p["clips"][0]
+    assert clip["ranker"] == "heuristic"  # Ollama desligado => caiu para a heurística
+    assert clip["hook"] and clip["title"].endswith("| Valorant")
+
+    bad = client.post("/projects/url", json={"url": "https://x.com/v", "settings": {"ranker": "gpt"}})
+    assert bad.status_code == 422
+
+
+def test_serves_static_site_without_shadowing_api(tmp_path, monkeypatch):
+    from tests.conftest import _make_client
+
+    site = tmp_path / "site"
+    (site / "app").mkdir(parents=True)
+    (site / "index.html").write_text("<h1>home</h1>")
+    (site / "app" / "index.html").write_text("<h1>painel</h1>")
+    monkeypatch.setenv("EZT_WEB_DIR", str(site))
+    with _make_client(tmp_path, monkeypatch) as c:
+        assert "painel" in c.get("/app/").text
+        assert c.get("/health").json() == {"ok": True}
+        assert c.get("/projects").json() == []

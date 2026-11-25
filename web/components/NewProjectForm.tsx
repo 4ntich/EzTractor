@@ -1,9 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { api, Project, ProjectSettings } from "@/lib/api";
+import { api, Capabilities, Project, ProjectSettings, Ranker } from "@/lib/api";
 
 const DEFAULTS: ProjectSettings = {
   clip_min_s: 15,
@@ -14,7 +14,20 @@ const DEFAULTS: ProjectSettings = {
   facecam: null,
   game: "",
   captions: true,
+  ranker: null,
 };
+
+function rankerHint(r: Ranker, caps: Capabilities | null): string {
+  if (r === "heuristic") return "Grátis. Nota pelos sinais; título e gancho tirados da própria fala.";
+  if (r === "ollama") {
+    if (!caps) return "";
+    if (!caps.ollama.online) return "⚠ Ollama não está rodando. Sem ele, o app usa \"Sinais\".";
+    if (!caps.ollama.model_ready) return `⚠ Modelo não baixado. Rode: ollama pull ${caps.ollama.model}`;
+    return `Grátis, IA no seu computador (${caps.ollama.model}). Mais lento.`;
+  }
+  if (caps && !caps.claude_configured) return "⚠ ANTHROPIC_API_KEY não configurada. Sem ela, o app usa \"Sinais\".";
+  return "Pago (API da Anthropic). Melhor qualidade de notas, títulos e ganchos.";
+}
 
 const CORNERS: Record<string, { x: number; y: number }> = {
   "sup-esq": { x: 0, y: 0 },
@@ -33,6 +46,18 @@ export default function NewProjectForm() {
   const [corner, setCorner] = useState("sup-esq");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [ranker, setRanker] = useState<Ranker>("heuristic");
+  const userPicked = useRef(false); // não sobrescrever a escolha do usuário com o padrão do servidor
+
+  useEffect(() => {
+    api<Capabilities>("/capabilities")
+      .then((c) => {
+        setCaps(c);
+        if (!userPicked.current) setRanker(c.default_ranker);
+      })
+      .catch(() => {});
+  }, []);
 
   const set = <K extends keyof ProjectSettings>(k: K, v: ProjectSettings[K]) => setS((prev) => ({ ...prev, [k]: v }));
 
@@ -42,6 +67,7 @@ export default function NewProjectForm() {
     setError(null);
     const settings: ProjectSettings = {
       ...s,
+      ranker,
       facecam: s.layout === "split" ? { ...CORNERS[corner], w: 0.28, h: 0.3 } : null,
     };
     try {
@@ -59,7 +85,7 @@ export default function NewProjectForm() {
         form.append("settings", JSON.stringify(settings));
         project = await api<Project>("/projects/upload", { method: "POST", body: form });
       }
-      router.push(`/app/projects/${project.id}`);
+      router.push(`/app/project/?id=${project.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado");
     } finally {
@@ -131,6 +157,21 @@ export default function NewProjectForm() {
             <option value="es">Espanhol</option>
           </select>
         </div>
+      </div>
+
+      <div>
+        <span className="label">Método de análise</span>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {(["heuristic", "ollama", "claude"] as const).map((r) => (
+            <button key={r} type="button" onClick={() => { userPicked.current = true; setRanker(r); }}
+              className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
+                ranker === r ? "border-brand bg-brand/10" : "border-zinc-700 hover:bg-zinc-800"}`}>
+              <b>{r === "heuristic" ? "Sinais" : r === "ollama" ? "IA local (Ollama)" : "Claude"}</b>
+              <span className="ml-2 text-xs text-zinc-400">{r === "claude" ? "pago" : "grátis"}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-zinc-400">{rankerHint(ranker, caps)}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

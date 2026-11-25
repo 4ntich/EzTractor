@@ -1,7 +1,11 @@
 """Ranqueia candidatos e gera título/gancho.
 
-- `claude`: envia transcrição + sinais de cada candidato ao Claude e recebe JSON estruturado.
-- `heuristic`: usa só a nota dos sinais (fallback sem custo, também usado se a API falhar).
+Métodos:
+- `heuristic`: grátis. Nota pelos sinais; título e gancho tirados da própria fala (headlines.py).
+- `ollama`: grátis, IA rodando no seu computador (https://ollama.com). Mesmo prompt do Claude.
+- `claude`: API paga da Anthropic.
+
+Se a IA escolhida falhar (sem chave, Ollama desligado, resposta inválida), cai para `heuristic`.
 """
 
 import json
@@ -10,8 +14,11 @@ from dataclasses import dataclass
 
 from ..config import get_settings
 from .candidates import Candidate, words_in
+from .headlines import make_headline
 
 log = logging.getLogger(__name__)
+
+METHODS = ("heuristic", "ollama", "claude")
 
 
 @dataclass
@@ -70,7 +77,10 @@ _SCHEMA = {
 }
 
 
-def heuristic_rank(cands: list[Candidate], words: list[dict]) -> list[RankedClip]:
+# ---------------------------------------------------------------- heurística (grátis)
+def heuristic_rank(
+    cands: list[Candidate], words: list[dict], game: str = "", language: str | None = None
+) -> list[RankedClip]:
     if not cands:
         return []
     hi = max(c.heuristic for c in cands)
@@ -79,20 +89,12 @@ def heuristic_rank(cands: list[Candidate], words: list[dict]) -> list[RankedClip
     out = []
     for c in cands:
         norm = (c.heuristic - lo) / span if len(cands) > 1 else 1.0
-        text = " ".join(w["w"] for w in words_in(words, c.start, c.end))
-        out.append(RankedClip(
-            candidate_id=c.id,
-            start=c.start,
-            end=c.end,
-            score=int(round(40 + 55 * norm)),
-            title=(text[:57] + "…") if len(text) > 58 else (text or f"Destaque #{c.id + 1}"),
-            hook="",
-            reason="Nota calculada pelos sinais de áudio, cena e fala.",
-            stats=c.stats,
-        ))
+        title, hook, reason = make_headline(words_in(words, c.start, c.end), c.stats, game, language)
+        out.append(RankedClip(c.id, c.start, c.end, int(round(40 + 55 * norm)), title, hook, reason, c.stats))
     return sorted(out, key=lambda r: r.score, reverse=True)
 
 
+# ---------------------------------------------------------------- partes comuns às IAs
 def _build_prompt(cands: list[Candidate], words: list[dict], game: str, min_s: int, max_s: int) -> str:
     items = []
     for c in cands:
@@ -100,7 +102,7 @@ def _build_prompt(cands: list[Candidate], words: list[dict], game: str, min_s: i
             "candidate_id": c.id,
             "start": c.start,
             "end": c.end,
-            "signals": c.stats,
+            "signals": {k: v for k, v in c.stats.items() if k != "peak_t"},
             "transcript": " ".join(w["w"] for w in words_in(words, c.start, c.end)) or "(sem fala)",
         })
     header = f"Jogo: {game or 'não informado'}\nDuração permitida por clipe: {min_s}s a {max_s}s\n\nCandidatos:\n"
@@ -121,9 +123,39 @@ def _clamp(rc: RankedClip, cand: Candidate, duration: float, min_s: int, max_s: 
     return rc
 
 
-def claude_rank(
-    cands: list[Candidate], words: list[dict], duration: float, game: str, min_s: int, max_s: int
+def _from_ai_json(
+    data: dict, cands: list[Candidate], words: list[dict], duration: float, game: str,
+    language: str | None, min_s: int, max_s: int,
 ) -> list[RankedClip]:
+    by_id = {c.id: c for c in cands}
+    out: list[RankedClip] = []
+    seen: set[int] = set()
+    for item in data.get("clips", []):
+        try:
+            cid = int(item["candidate_id"])
+            rc = RankedClip(cid, float(item["start"]), float(item["end"]), int(item["score"]),
+                            str(item["title"]), str(item["hook"]), str(item["reason"]), {})
+        except (KeyError, TypeError, ValueError):
+            continue  # modelos locais às vezes erram um item; ignora só ele
+        if cid not in by_id or cid in seen:
+            continue
+        seen.add(cid)
+        rc.stats = by_id[cid].stats
+        out.append(_clamp(rc, by_id[cid], duration, min_s, max_s))
+    if not out:
+        raise ValueError("a IA não devolveu nenhum clipe válido")
+    # candidatos que a IA omitiu entram pela heurística, mas sempre abaixo dos avaliados pela IA
+    missing = [c for c in cands if c.id not in seen]
+    if missing:
+        floor = min(r.score for r in out)
+        for i, r in enumerate(heuristic_rank(missing, words, game, language)):
+            r.score = max(0, floor - 1 - i)
+            out.append(r)
+    return sorted(out, key=lambda r: r.score, reverse=True)
+
+
+# ---------------------------------------------------------------- Claude (pago)
+def claude_rank(cands, words, duration, game, min_s, max_s, language=None) -> list[RankedClip]:
     import anthropic
 
     client = anthropic.Anthropic()
@@ -142,33 +174,63 @@ def claude_rank(
     if response.stop_reason == "max_tokens":
         raise RuntimeError("resposta truncada (max_tokens)")
     text = next(b.text for b in response.content if b.type == "text")
-    data = json.loads(text)
+    return _from_ai_json(json.loads(text), cands, words, duration, game, language, min_s, max_s)
 
-    by_id = {c.id: c for c in cands}
-    out: list[RankedClip] = []
-    seen: set[int] = set()
-    for item in data["clips"]:
-        cid = item["candidate_id"]
-        if cid not in by_id or cid in seen:
-            continue
-        seen.add(cid)
-        rc = RankedClip(cid, float(item["start"]), float(item["end"]), int(item["score"]),
-                        item["title"], item["hook"], item["reason"], by_id[cid].stats)
-        out.append(_clamp(rc, by_id[cid], duration, min_s, max_s))
-    # candidatos que o modelo omitiu entram com a nota heurística
-    missing = [c for c in cands if c.id not in seen]
-    if missing:
-        out.extend(heuristic_rank(missing, words))
-    return sorted(out, key=lambda r: r.score, reverse=True)
+
+# ---------------------------------------------------------------- Ollama (IA local, grátis)
+def ollama_rank(cands, words, duration, game, min_s, max_s, language=None) -> list[RankedClip]:
+    import httpx
+
+    s = get_settings()
+    resp = httpx.post(
+        f"{s.ollama_url.rstrip('/')}/api/chat",
+        json={
+            "model": s.ollama_model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": _build_prompt(cands, words, game, min_s, max_s)},
+            ],
+            "format": _SCHEMA,  # saída estruturada do Ollama (JSON Schema)
+            "stream": False,
+            "options": {"temperature": 0.2, "num_ctx": 16384},
+        },
+        timeout=s.ollama_timeout_s,
+    )
+    if resp.status_code == 404:
+        raise RuntimeError(f"modelo '{s.ollama_model}' não encontrado no Ollama; rode: ollama pull {s.ollama_model}")
+    resp.raise_for_status()
+    content = resp.json()["message"]["content"]
+    return _from_ai_json(json.loads(content), cands, words, duration, game, language, min_s, max_s)
+
+
+def ollama_status() -> dict:
+    """Diz se o Ollama está no ar e se o modelo configurado está baixado."""
+    import httpx
+
+    s = get_settings()
+    try:
+        r = httpx.get(f"{s.ollama_url.rstrip('/')}/api/tags", timeout=1.5)
+        r.raise_for_status()
+        names = [m.get("name", "") for m in r.json().get("models", [])]
+    except (httpx.HTTPError, ValueError):
+        return {"online": False, "model": s.ollama_model, "model_ready": False}
+    wanted = s.ollama_model if ":" in s.ollama_model else f"{s.ollama_model}:latest"
+    return {"online": True, "model": s.ollama_model, "model_ready": wanted in names}
+
+
+# ---------------------------------------------------------------- entrada única
+_AI = {"claude": claude_rank, "ollama": ollama_rank}
 
 
 def rank(
-    cands: list[Candidate], words: list[dict], duration: float, game: str, min_s: int, max_s: int
+    cands: list[Candidate], words: list[dict], duration: float, game: str, min_s: int, max_s: int,
+    method: str | None = None, language: str | None = None,
 ) -> tuple[list[RankedClip], str]:
-    """Retorna (clipes ranqueados, método usado)."""
-    if get_settings().ranker == "claude" and cands:
+    """Retorna (clipes ranqueados, método efetivamente usado)."""
+    method = method or get_settings().ranker
+    if method in _AI and cands:
         try:
-            return claude_rank(cands, words, duration, game, min_s, max_s), "claude"
-        except Exception as e:  # rede, chave ausente, recusa… nunca derruba o pipeline
-            log.warning("ranking com Claude falhou, usando heurística: %s", e)
-    return heuristic_rank(cands, words), "heuristic"
+            return _AI[method](cands, words, duration, game, min_s, max_s, language), method
+        except Exception as e:  # rede, chave ausente, Ollama desligado, JSON ruim… nunca derruba o pipeline
+            log.warning("ranking com %s falhou, usando heurística: %s", method, e)
+    return heuristic_rank(cands, words, game, language), "heuristic"

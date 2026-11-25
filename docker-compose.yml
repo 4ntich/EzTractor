@@ -1,54 +1,39 @@
+# Uso:
+#   docker compose up -d                       -> abre http://localhost:8000
+#   docker compose --profile ollama up -d      -> também sobe o Ollama num container
+#
+# Por padrão usa a imagem publicada pelo GitHub Actions. Para compilar localmente:
+#   docker compose up -d --build
 services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: eztractor
-      POSTGRES_PASSWORD: eztractor
-      POSTGRES_DB: eztractor
-    volumes: [pgdata:/var/lib/postgresql/data]
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U eztractor"]
-      interval: 5s
-      retries: 10
-
-  redis:
-    image: redis:7-alpine
-
-  api:
-    build: ./backend
-    env_file: .env
-    environment:
-      EZT_DATABASE_URL: postgresql+psycopg://eztractor:eztractor@db:5432/eztractor
-      EZT_REDIS_URL: redis://redis:6379/0
-      EZT_QUEUE_MODE: rq
-    volumes: [media:/data]
+  app:
+    image: ghcr.io/4ntich/eztractor:latest
+    build: .
     ports: ["8000:8000"]
-    depends_on:
-      db: { condition: service_healthy }
-      redis: { condition: service_started }
-
-  worker:
-    build: ./backend
-    command: ["python", "-m", "eztractor.worker"]
-    env_file: .env
+    env_file:
+      - path: .env
+        required: false
     environment:
-      EZT_DATABASE_URL: postgresql+psycopg://eztractor:eztractor@db:5432/eztractor
-      EZT_REDIS_URL: redis://redis:6379/0
-      EZT_QUEUE_MODE: rq
-    volumes: [media:/data, hfcache:/root/.cache/huggingface]
-    depends_on:
-      db: { condition: service_healthy }
-      redis: { condition: service_started }
+      # Ollama instalado direto no seu PC (recomendado, usa a placa de vídeo).
+      # Se usar o perfil "ollama" abaixo, troque no .env para: EZT_OLLAMA_URL=http://ollama:11434
+      EZT_OLLAMA_URL: ${EZT_OLLAMA_URL:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - eztractor-data:/data
+    restart: unless-stopped
 
-  web:
-    build:
-      context: ./web
-      args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000
-    ports: ["3000:3000"]
-    depends_on: [api]
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+    # Placa NVIDIA (requer NVIDIA Container Toolkit): descomente
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices: [{ driver: nvidia, count: all, capabilities: [gpu] }]
 
 volumes:
-  pgdata:
-  media:
-  hfcache:
+  eztractor-data:
+  ollama-models:

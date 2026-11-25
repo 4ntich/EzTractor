@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -8,6 +9,7 @@ import jwt
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,9 +19,11 @@ from ..auth import check_password, create_token, password_required, require_auth
 from ..config import get_settings
 from ..db import get_db, init_db
 from ..models import Clip, Project, ProjectStatus
+from ..pipeline.ranker import ollama_status
 from ..queue import enqueue_project, enqueue_render
 from ..schemas import (
     AuthStatusOut,
+    CapabilitiesOut,
     ClipOut,
     ClipUpdateIn,
     LoginIn,
@@ -51,7 +55,7 @@ def clip_out(c: Clip) -> ClipOut:
     ready = c.render_status == "ready"
     return ClipOut(
         id=c.id, start_s=c.start_s, end_s=c.end_s, score=c.score, title=c.title, hook=c.hook,
-        reason=c.reason, render_status=c.render_status,
+        reason=c.reason, render_status=c.render_status, ranker=(c.signals or {}).get("ranker", "heuristic"),
         video_url=sign(c.render_key) if ready else None,
         thumb_url=sign(c.thumb_key) if ready else None,
     )
@@ -75,6 +79,16 @@ def get_project_or_404(db: Session, project_id: str) -> Project:
 
 # Rotas protegidas pela senha (se configurada)
 api = APIRouter(dependencies=[Depends(require_auth)])
+
+
+@api.get("/capabilities", response_model=CapabilitiesOut)
+def capabilities():
+    """Quais métodos de análise estão disponíveis agora (para o formulário do front)."""
+    return CapabilitiesOut(
+        default_ranker=get_settings().ranker,
+        claude_configured=bool(os.environ.get("ANTHROPIC_API_KEY")),
+        ollama=ollama_status(),
+    )
 
 
 @api.post("/projects/url", response_model=ProjectOut, status_code=201)
@@ -221,6 +235,11 @@ def create_app() -> FastAPI:
         return FileResponse(path)
 
     app.include_router(api)
+
+    # Site estático (Next.js exportado). Montado por último para não encobrir as rotas da API.
+    web_dir = get_settings().web_dir
+    if web_dir and Path(web_dir).is_dir():
+        app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
     return app
 
 

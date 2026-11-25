@@ -15,6 +15,18 @@ class AuthStatusOut(BaseModel):
     password_required: bool
 
 
+class OllamaStatus(BaseModel):
+    online: bool
+    model: str
+    model_ready: bool
+
+
+class CapabilitiesOut(BaseModel):
+    default_ranker: str
+    claude_configured: bool
+    ollama: OllamaStatus
+
+
 class FacecamRect(BaseModel):
     """Retângulo normalizado (0..1) da webcam no vídeo original."""
 
@@ -33,6 +45,8 @@ class ProjectSettings(BaseModel):
     facecam: FacecamRect | None = None
     game: str = ""
     captions: bool = True
+    # None = usa o padrão do servidor (EZT_RANKER)
+    ranker: str | None = Field(None, pattern="^(heuristic|ollama|claude)$")
 
     @model_validator(mode="after")
     def _check(self):
@@ -66,6 +80,7 @@ class ClipOut(BaseModel):
     hook: str
     reason: str
     render_status: str
+    ranker: str = "heuristic"
     video_url: str | None = None
     thumb_url: str | None = None
 

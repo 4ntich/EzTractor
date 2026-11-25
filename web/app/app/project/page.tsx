@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 import ClipCard from "@/components/ClipCard";
 import StatusBadge from "@/components/StatusBadge";
 import { api, fmtTime, Project } from "@/lib/api";
 
-export default function ProjectPage() {
-  const { id } = useParams<{ id: string }>();
+function ProjectView() {
+  const id = useSearchParams().get("id") ?? "";
   const router = useRouter();
   const [p, setP] = useState<Project | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -92,5 +92,13 @@ export default function ProjectPage() {
         </section>
       )}
     </div>
+  );
+}
+
+export default function ProjectPage() {
+  return (
+    <Suspense>
+      <ProjectView />
+    </Suspense>
   );
 }

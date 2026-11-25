@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     # "rq" = fila Redis + worker separado; "inline" = roda o pipeline numa thread da API (dev/testes)
     queue_mode: str = "inline"
     storage_dir: Path = Path("./data")
+    # Pasta com o site já compilado (web/out). Se existir, a API também serve o site.
+    web_dir: Path | None = None
     jwt_secret: str = "dev-only-secret-change-me-in-production-0123456789"
     jwt_ttl_hours: int = 24 * 30
     cors_origins: str = "http://localhost:3000"
@@ -27,8 +29,12 @@ class Settings(BaseSettings):
     # IA
     transcriber: str = "faster_whisper"  # faster_whisper | none
     whisper_model: str = "small"
-    ranker: str = "claude"  # claude | heuristic
+    # Método padrão de análise: heuristic (grátis) | ollama (IA local, grátis) | claude (API paga)
+    ranker: str = "heuristic"
     claude_model: str = "claude-opus-5-5"
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5:7b"
+    ollama_timeout_s: int = 900
 
 
 @lru_cache

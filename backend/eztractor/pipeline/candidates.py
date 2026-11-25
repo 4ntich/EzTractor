@@ -121,6 +121,7 @@ def generate(
             "scene_cuts": int(sig.scene[s:e].sum()),
             "hype_words": int(sig.hype[s:e].sum()),
             "words": int(sig.speech[s:e].sum()),
+            "peak_t": float(s + int(np.argmax(per_sec[s:e]))),  # segundo mais intenso do clipe
         }
     return picked
 

@@ -102,7 +102,8 @@ def process_project(project_id: str) -> None:
         min_s, max_s = int(st.get("clip_min_s", 15)), int(st.get("clip_max_s", 45))
         cands = cand_mod.generate(sig, info.duration_s, words, min_s, max_s, limit=max_clips * 2)
         _update(db, project, stage="rank", progress=60)
-        ranked, method = ranker.rank(cands, words, info.duration_s, st.get("game", ""), min_s, max_s)
+        ranked, method = ranker.rank(cands, words, info.duration_s, st.get("game", ""), min_s, max_s,
+                                     method=st.get("ranker"), language=st.get("language"))
         ranked = ranked[:max_clips]
 
         for c in list(project.clips):

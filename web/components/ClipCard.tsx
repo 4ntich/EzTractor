@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { api, Clip, fileUrl, fmtTime } from "@/lib/api";
+import { api, Clip, fileUrl, fmtTime, RANKER_LABEL } from "@/lib/api";
 
 function scoreColor(score: number) {
   if (score >= 80) return "bg-emerald-500";
@@ -50,6 +50,10 @@ export default function ClipCard({ clip, rank, onChange }: { clip: Clip; rank: n
         <span className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-xs font-bold text-white ${scoreColor(clip.score)}`}
           title="Potencial viral (0–100)">
           #{rank} · {clip.score}
+        </span>
+        <span className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] text-zinc-200"
+          title="Quem analisou este clipe">
+          {RANKER_LABEL[clip.ranker] ?? clip.ranker}
         </span>
       </div>
 

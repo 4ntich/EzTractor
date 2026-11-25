@@ -42,7 +42,7 @@ export default function Dashboard() {
           <ul className="divide-y divide-zinc-800 overflow-hidden rounded-xl border border-zinc-800">
             {projects.map((p) => (
               <li key={p.id}>
-                <Link href={`/app/projects/${p.id}`}
+                <Link href={`/app/project/?id=${p.id}`}
                   className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-zinc-900">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{p.title}</p>
