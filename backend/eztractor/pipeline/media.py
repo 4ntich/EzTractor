@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,8 +19,14 @@ class MediaInfo:
     has_audio: bool
 
 
+# No Windows (app sem console) cada ffmpeg abriria uma janela preta: CREATE_NO_WINDOW evita isso.
+_NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+
+
 def run(cmd: list[str], timeout: float | None = None) -> subprocess.CompletedProcess:
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    # utf-8 explícito: no Windows o padrão seria cp1252 e a saída do ffmpeg quebraria a leitura
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                          timeout=timeout, **_NO_WINDOW)
     if proc.returncode != 0:
         tail = (proc.stderr or "")[-1500:]
         raise MediaError(f"{cmd[0]} falhou ({proc.returncode}): {tail}")

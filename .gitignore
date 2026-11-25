@@ -11,3 +11,6 @@ node_modules/
 web/next-env.d.ts
 web/tsconfig.tsbuildinfo
 web/out/
+dist/
+build/
+*.spec.bak
