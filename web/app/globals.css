@@ -1,26 +1,173 @@
+@import "./themes.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ================================================================ base */
+:root { --danger: 252 165 165; }
+:root[data-mode="light"] { --danger: 220 38 38; }
+html {
+  background: rgb(var(--z-950));
+}
 body {
-  @apply bg-zinc-950 text-zinc-100 antialiased;
+  @apply min-h-screen font-sans antialiased;
+  color: rgb(var(--z-100));
+  background: var(--bg);
+  background-attachment: fixed;
+  transition: background .4s ease, color .3s ease;
+}
+h1, h2, h3 {
+  @apply font-display;
+  color: rgb(var(--strong));
+  letter-spacing: -0.01em;
+}
+::selection {
+  background: rgb(var(--a-500) / .35);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--z-600)) transparent;
+}
+:focus-visible {
+  outline: 2px solid rgb(var(--a-400));
+  outline-offset: 2px;
 }
 
 @layer components {
-  .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50;
+  /* ---------------------------------------------------------- vidro (Aero) */
+  .glass {
+    position: relative;
+    isolation: isolate;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    backdrop-filter: blur(18px) saturate(170%);
+    -webkit-backdrop-filter: blur(18px) saturate(170%);
   }
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-zinc-800 disabled:opacity-50;
-  }
-  .input {
-    @apply w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 outline-none focus:border-brand;
-  }
-  .label {
-    @apply mb-1 block text-xs font-medium uppercase tracking-wide text-zinc-400;
+  .glass::before {
+    /* reflexo especular na metade de cima + gotas de "vidro molhado" */
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: var(--glass-highlight), var(--droplets);
+    background-size: 100% 100%, 233px 197px, 151px 263px, 317px 241px, 127px 173px, 389px 211px;
   }
   .card {
-    @apply rounded-xl border border-zinc-800 bg-zinc-900/60;
+    @apply glass rounded-2xl;
+    transition: box-shadow .25s ease, transform .25s ease, border-color .25s ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    border-color: rgb(var(--a-400) / .55);
+    box-shadow: var(--glass-shadow), 0 18px 40px -16px rgb(var(--a-500) / .55);
+  }
+
+  /* ---------------------------------------------------------- botões */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold;
+    position: relative;
+    color: rgb(var(--on-accent));
+    text-shadow: 0 1px 1px rgb(0 0 0 / .25);
+    border: 1px solid rgb(var(--b-700));
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / .45) 0%, rgb(255 255 255 / .12) 48%, transparent 50%),
+      linear-gradient(180deg, rgb(var(--b-400)) 0%, rgb(var(--b-500)) 50%, rgb(var(--b-600)) 51%, rgb(var(--b-500)) 100%);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / .6),
+      inset 0 -3px 8px rgb(var(--b-800) / .45),
+      0 8px 20px -8px rgb(var(--b-500) / .85);
+    transition: filter .2s ease, box-shadow .2s ease, transform .1s ease;
+  }
+  .btn:hover:not(:disabled) {
+    filter: brightness(1.08) saturate(1.1);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / .7),
+      inset 0 -3px 8px rgb(var(--b-800) / .4),
+      0 0 0 3px rgb(var(--b-400) / .25),
+      0 10px 28px -8px rgb(var(--b-500));
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+    filter: brightness(.96);
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium;
+    color: rgb(var(--strong));
+    background: linear-gradient(180deg, rgb(255 255 255 / .14) 0%, rgb(255 255 255 / .04) 50%, transparent 51%), var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .18), 0 4px 12px -6px rgb(0 0 0 / .35);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: background .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: linear-gradient(180deg, rgb(255 255 255 / .2) 0%, rgb(255 255 255 / .06) 50%, transparent 51%), var(--glass-bg-strong);
+    border-color: rgb(var(--a-400) / .6);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / .25), 0 0 0 3px rgb(var(--a-400) / .15);
+  }
+  .btn-ghost:disabled {
+    @apply cursor-not-allowed opacity-50;
+  }
+
+  /* ---------------------------------------------------------- campos */
+  .input {
+    @apply w-full rounded-xl px-3 py-2 text-sm outline-none;
+    color: rgb(var(--z-50));
+    background: rgb(var(--z-900) / .55);
+    border: 1px solid rgb(var(--z-700) / .9);
+    box-shadow: inset 0 2px 4px rgb(0 0 0 / .18);
+    transition: border-color .2s ease, box-shadow .2s ease;
+  }
+  .input::placeholder {
+    color: rgb(var(--z-500));
+  }
+  .input:focus {
+    border-color: rgb(var(--a-400));
+    box-shadow: inset 0 2px 4px rgb(0 0 0 / .12), 0 0 0 3px rgb(var(--a-400) / .25);
+  }
+  select.input option, select.input optgroup {
+    background: rgb(var(--z-900));
+    color: rgb(var(--z-100));
+  }
+  .label {
+    @apply mb-1 block text-[11px] font-semibold uppercase tracking-[.08em];
+    color: rgb(var(--z-400));
+  }
+
+  /* ---------------------------------------------------------- barra superior */
+  .glass-bar {
+    @apply sticky top-0 z-40;
+    background: linear-gradient(180deg, rgb(255 255 255 / .10), rgb(255 255 255 / .03)), rgb(var(--z-950) / .55);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: 0 10px 30px -18px rgb(0 0 0 / .6);
+    backdrop-filter: blur(20px) saturate(170%);
+    -webkit-backdrop-filter: blur(20px) saturate(170%);
+  }
+  .nav-link {
+    @apply rounded-lg px-3 py-1.5 text-sm font-medium transition;
+    color: rgb(var(--z-300));
+  }
+  .nav-link:hover {
+    color: rgb(var(--strong));
+    background: rgb(255 255 255 / .06);
+  }
+  .nav-link[data-active="true"] {
+    color: rgb(var(--strong));
+    background: rgb(var(--a-500) / .18);
+    box-shadow: inset 0 0 0 1px rgb(var(--a-400) / .35);
+  }
+  .text-gradient {
+    background: linear-gradient(90deg, rgb(var(--a-300)), rgb(var(--a-500)) 60%, rgb(var(--a-400)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
 }
 
@@ -42,3 +189,10 @@ body {
 .ezt-anim-typewriter { animation: ezt-typewriter 1.2s steps(24) both; }
 .ezt-anim-pulse { animation: ezt-pulse .8s ease-in-out infinite; }
 .ezt-canvas { container-type: inline-size; }
+
+@keyframes ezt-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ezt-rise { animation: ezt-rise .45s cubic-bezier(.2,.7,.2,1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

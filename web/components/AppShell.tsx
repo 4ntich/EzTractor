@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import Logo from "@/components/Logo";
+import ThemeSwitcher from "@/components/ThemeSwitcher";
 import { api, getToken, setToken } from "@/lib/api";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const path = usePathname() ?? "";
   const [ready, setReady] = useState(false);
   const [locked, setLocked] = useState(false);
 
@@ -23,29 +26,32 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <div className="border-b border-zinc-800">
-        <nav className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-5">
-            <Link href="/app" className="text-lg font-black">
-              Ez<span className="text-brand">Tractor</span>
-            </Link>
-            <Link href="/app" className="text-sm text-zinc-400 hover:text-white">Projetos</Link>
-            <Link href="/app/templates" className="text-sm text-zinc-400 hover:text-white">Templates</Link>
+      <header className="glass-bar">
+        <nav className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-6">
+            <Link href="/app" aria-label="EzTractor — início"><Logo /></Link>
+            <div className="flex items-center gap-1">
+              <Link href="/app" className="nav-link" data-active={!path.startsWith("/app/templates")}>Projetos</Link>
+              <Link href="/app/templates" className="nav-link" data-active={path.startsWith("/app/templates")}>Templates</Link>
+            </div>
           </div>
-          {locked && (
-            <button
-              className="text-sm text-zinc-400 hover:text-zinc-100"
-              onClick={() => {
-                setToken(null);
-                router.push("/login");
-              }}
-            >
-              Sair
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            <ThemeSwitcher />
+            {locked && (
+              <button
+                className="btn-ghost h-9 px-3 text-xs"
+                onClick={() => {
+                  setToken(null);
+                  router.push("/login");
+                }}
+              >
+                Sair
+              </button>
+            )}
+          </div>
         </nav>
-      </div>
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">{ready ? children : null}</main>
+      </header>
+      <main className="ezt-rise mx-auto max-w-6xl px-4 py-8 sm:px-6">{ready ? children : null}</main>
     </>
   );
 }

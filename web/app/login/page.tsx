@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import Logo from "@/components/Logo";
+import ThemeSwitcher from "@/components/ThemeSwitcher";
 import { api, setToken } from "@/lib/api";
 
 export default function LoginPage() {
@@ -31,10 +33,9 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center px-4">
-      <form onSubmit={submit} className="card w-full max-w-sm space-y-4 p-6">
-        <p className="text-center text-xl font-black">
-          Ez<span className="text-brand">Tractor</span>
-        </p>
+      <div className="fixed right-4 top-4"><ThemeSwitcher /></div>
+      <form onSubmit={submit} className="card ezt-rise w-full max-w-sm space-y-5 p-7">
+        <div className="flex justify-center"><Logo size="lg" /></div>
         <div>
           <label className="label" htmlFor="password">Senha</label>
           <input id="password" type="password" required autoFocus className="input" value={password}

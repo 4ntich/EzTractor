@@ -221,7 +221,7 @@ export default function TemplatesPage() {
         {tab === "galeria" ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
             {shownPresets.map((p) => (
-              <article key={p.key} className="card flex flex-col overflow-hidden" data-testid={`preset-${p.key}`}>
+              <article key={p.key} className="card card-hover flex flex-col overflow-hidden" data-testid={`preset-${p.key}`}>
                 <button type="button" onClick={() => load(p.config, { name: p.name })} title="Editar este estilo"
                   className="block bg-black">
                   <div className="mx-auto" style={{ width: p.config.width >= p.config.height ? "100%" : "62%" }}>
@@ -244,7 +244,7 @@ export default function TemplatesPage() {
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
             {library.map((t) => (
-              <article key={t.id} className={`card flex flex-col overflow-hidden ${t.id === editingId ? "ring-2 ring-violet-500" : ""}`}>
+              <article key={t.id} className={`card card-hover flex flex-col overflow-hidden ${t.id === editingId ? "ring-2 ring-violet-500" : ""}`}>
                 <button type="button" className="block bg-black" onClick={() => load(t.config, { name: t.name, id: t.id, isDefault: t.is_default })}>
                   <div className="mx-auto" style={{ width: t.config.width >= t.config.height ? "100%" : "62%" }}>
                     <TemplateCanvas cfg={t.config} families={families} />
@@ -263,7 +263,7 @@ export default function TemplatesPage() {
                     </button>
                     {confirmDelete === t.id ? (
                       <>
-                        <button className="btn-ghost px-2 py-1 text-xs text-red-300" onClick={() => remove(t)}>Excluir?</button>
+                        <button className="btn-ghost px-2 py-1 text-xs text-danger" onClick={() => remove(t)}>Excluir?</button>
                         <button className="btn-ghost px-2 py-1 text-xs" onClick={() => setConfirmDelete(null)}>Não</button>
                       </>
                     ) : (
@@ -357,7 +357,7 @@ export default function TemplatesPage() {
                   <button className="text-zinc-500 hover:text-white disabled:opacity-30" onClick={() => moveLayer(l.id, -1)} disabled={i === 0} title="Para trás">↑</button>
                   <button className="text-zinc-500 hover:text-white disabled:opacity-30" onClick={() => moveLayer(l.id, 1)} disabled={i === cfg.layers.length - 1} title="Para frente">↓</button>
                   <button className="text-xs text-zinc-400 hover:text-white" onClick={() => duplicateLayer(l)} title="Duplicar">⧉</button>
-                  <button className="text-xs text-red-300 hover:text-red-200" onClick={() => removeLayer(l.id)} title="Remover">✕</button>
+                  <button className="text-xs text-danger hover:opacity-80" onClick={() => removeLayer(l.id)} title="Remover">✕</button>
                 </li>
               ))}
             </ul>

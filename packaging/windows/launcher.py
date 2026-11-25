@@ -182,7 +182,7 @@ def run_gui() -> None:
     root.title(APP_NAME)
     root.geometry("380x230")
     root.resizable(False, False)
-    root.configure(bg="#0c0c0f")
+    root.configure(bg="#04313B")
     ico = bundle_dir() / "eztractor.ico"
     if ico.exists():
         try:
@@ -190,30 +190,30 @@ def run_gui() -> None:
         except tk.TclError:
             pass
 
-    tk.Label(root, text="EzTractor está rodando", fg="#ffffff", bg="#0c0c0f",
+    tk.Label(root, text="EzTractor está rodando", fg="#ffffff", bg="#04313B",
              font=("Segoe UI", 13, "bold")).pack(pady=(18, 2))
-    tk.Label(root, text=url, fg="#a78bfa", bg="#0c0c0f", font=("Segoe UI", 9)).pack()
-    tk.Label(root, text="Feche esta janela para desligar.", fg="#a1a1aa", bg="#0c0c0f",
+    tk.Label(root, text=url, fg="#7DD3FC", bg="#04313B", font=("Segoe UI", 9)).pack()
+    tk.Label(root, text="Feche esta janela para desligar.", fg="#9CC9D1", bg="#04313B",
              font=("Segoe UI", 9)).pack(pady=(2, 12))
 
-    row = tk.Frame(root, bg="#0c0c0f")
+    row = tk.Frame(root, bg="#04313B")
     row.pack()
 
     def btn(text, cmd, primary=False):
         tk.Button(row, text=text, command=cmd, width=15, relief="flat", cursor="hand2",
-                  bg="#7c3aed" if primary else "#27272a", fg="#ffffff", activebackground="#5b21b6",
+                  bg="#1684FF" if primary else "#0B4A57", fg="#ffffff", activebackground="#006CE6",
                   activeforeground="#ffffff", font=("Segoe UI", 9, "bold" if primary else "normal")
                   ).pack(side="left", padx=4, pady=4)
 
     btn("Abrir EzTractor", lambda: webbrowser.open(url), primary=True)
     btn("Pasta dos vídeos", lambda: os.startfile(str(d / "media")) if hasattr(os, "startfile") else None)
 
-    row2 = tk.Frame(root, bg="#0c0c0f")
+    row2 = tk.Frame(root, bg="#04313B")
     row2.pack()
-    tk.Button(row2, text="Configurações", width=15, relief="flat", bg="#27272a", fg="#ffffff", cursor="hand2",
+    tk.Button(row2, text="Configurações", width=15, relief="flat", bg="#0B4A57", fg="#ffffff", cursor="hand2",
               command=lambda: os.startfile(str(data_dir() / "config.env")) if hasattr(os, "startfile") else None
               ).pack(side="left", padx=4, pady=4)
-    tk.Button(row2, text="Sair", width=15, relief="flat", bg="#27272a", fg="#fca5a5", cursor="hand2",
+    tk.Button(row2, text="Sair", width=15, relief="flat", bg="#0B4A57", fg="#fca5a5", cursor="hand2",
               command=root.destroy).pack(side="left", padx=4, pady=4)
 
     (d / "media").mkdir(parents=True, exist_ok=True)

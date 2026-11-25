@@ -89,7 +89,7 @@ function ProjectView() {
           {(p.status === "ready" || p.status === "failed") && (
             <button className="btn-ghost" onClick={reprocess}>Reprocessar</button>
           )}
-          {!busy && <button className="btn-ghost text-red-300" onClick={remove}>Excluir</button>}
+          {!busy && <button className="btn-ghost text-danger" onClick={remove}>Excluir</button>}
         </div>
       </header>
 

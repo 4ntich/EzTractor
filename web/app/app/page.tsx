@@ -39,11 +39,11 @@ export default function Dashboard() {
         ) : projects.length === 0 ? (
           <p className="text-sm text-zinc-500">Nenhum projeto ainda. Cole um link acima para começar.</p>
         ) : (
-          <ul className="divide-y divide-zinc-800 overflow-hidden rounded-xl border border-zinc-800">
+          <ul className="card divide-y divide-zinc-700/50 overflow-hidden">
             {projects.map((p) => (
               <li key={p.id}>
                 <Link href={`/app/project/?id=${p.id}`}
-                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 hover:bg-zinc-900">
+                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 transition hover:bg-white/5">
                   <div className="min-w-0">
                     <p className="truncate font-medium">{p.title}</p>
                     <p className="text-xs text-zinc-500">

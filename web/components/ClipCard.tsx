@@ -37,7 +37,7 @@ export default function ClipCard({ clip, rank, onChange }: { clip: Clip; rank: n
   }
 
   return (
-    <article className="card flex flex-col overflow-hidden">
+    <article className="card card-hover flex flex-col overflow-hidden">
       <div className="relative aspect-[9/16] bg-black">
         {clip.render_status === "ready" && clip.video_url ? (
           <video key={clip.video_url} src={fileUrl(clip.video_url)} poster={fileUrl(clip.thumb_url)}
@@ -47,11 +47,11 @@ export default function ClipCard({ clip, rank, onChange }: { clip: Clip; rank: n
             {clip.render_status === "failed" ? "Falha ao renderizar" : "Renderizando…"}
           </div>
         )}
-        <span className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-xs font-bold text-white ${scoreColor(clip.score)}`}
+        <span className={`absolute left-2 top-2 rounded-full px-2 py-0.5 text-xs font-bold text-onvideo ${scoreColor(clip.score)}`}
           title="Potencial viral (0–100)">
           #{rank} · {clip.score}
         </span>
-        <span className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] text-zinc-200"
+        <span className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-[10px] text-onvideo"
           title="Quem analisou este clipe">
           {RANKER_LABEL[clip.ranker] ?? clip.ranker}
         </span>

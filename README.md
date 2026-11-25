@@ -4,6 +4,18 @@ Transforma gravações longas de gameplay (VODs da Twitch, YouTube, Kick ou arqu
 
 App **de uso pessoal**: sem cadastro, sem créditos e sem marca d'água. **Funciona 100% grátis**. A IA paga (Claude) é opcional.
 
+## Instalar no Windows (mais fácil)
+
+1. Abra **Releases** no GitHub (https://github.com/4ntich/EzTractor/releases) e baixe o `EzTractor-Setup-<versão>.exe`.
+2. Execute. Não precisa ser administrador nem ter Docker. Se aparecer "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo** (o app não é assinado digitalmente).
+3. Abra o **EzTractor** pelo menu Iniciar. Uma janelinha mostra que ele está rodando e o app abre no navegador.
+
+Os vídeos, projetos e configurações ficam em `%LOCALAPPDATA%\EzTractor` (o botão **Configurações** da janelinha abre o `config.env`). Desinstalar não apaga esses dados.
+
+## Aparência
+
+Tema padrão **Aero Turquesa**: fundo turquesa escuro, painéis de vidro molhado e botões azuis brilhantes. No topo há o botão de **modo claro/escuro** e o seletor de **temas**: Aero Turquesa, Violeta Neon, Ouro Noir, Esmeralda e Pôr do Sol. A escolha fica salva no navegador. As cores ficam em `web/scripts/gen_themes.py`.
+
 ## Instalar e usar (Docker)
 
 Pré-requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/Mac) ou Docker Engine (Linux).
