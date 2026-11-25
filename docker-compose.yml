@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: eztractor
+      POSTGRES_PASSWORD: eztractor
+      POSTGRES_DB: eztractor
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eztractor"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+
+  api:
+    build: ./backend
+    env_file: .env
+    environment:
+      EZT_DATABASE_URL: postgresql+psycopg://eztractor:eztractor@db:5432/eztractor
+      EZT_REDIS_URL: redis://redis:6379/0
+      EZT_QUEUE_MODE: rq
+    volumes: [media:/data]
+    ports: ["8000:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  worker:
+    build: ./backend
+    command: ["python", "-m", "eztractor.worker"]
+    env_file: .env
+    environment:
+      EZT_DATABASE_URL: postgresql+psycopg://eztractor:eztractor@db:5432/eztractor
+      EZT_REDIS_URL: redis://redis:6379/0
+      EZT_QUEUE_MODE: rq
+    volumes: [media:/data, hfcache:/root/.cache/huggingface]
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports: ["3000:3000"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  media:
+  hfcache:
