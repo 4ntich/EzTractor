@@ -48,6 +48,9 @@ class Project(Base):
     # settings: clip_min_s, clip_max_s, max_clips, language, layout, facecam{x,y,w,h}, game, captions
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
     transcript: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [{w,start,end}]
+    # trechos a pular (propaganda, inscrição, final): [{start,end,category,reason,source}]
+    skip_segments: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    youtube_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
@@ -68,6 +71,7 @@ class Clip(Base):
     hook: Mapped[str] = mapped_column(String(200), default="")
     reason: Mapped[str] = mapped_column(Text, default="")
     signals: Mapped[dict] = mapped_column(JSON, default=dict)
+    cuts: Mapped[list | None] = mapped_column(JSON, nullable=True)  # trechos removidos: [[ini, fim], ...] absolutos
     render_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     thumb_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     render_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|ready|failed

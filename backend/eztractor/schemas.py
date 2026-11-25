@@ -58,6 +58,8 @@ class ProjectSettings(BaseModel):
     mode: str = Field("clips", pattern="^(clips|download)$")
     # altura máxima ao baixar de um link (0 = melhor disponível)
     download_height: int = Field(1080)
+    # pular propaganda, pedidos de inscrição e finais de vídeo
+    skip_ads: bool = True
     # qualidade do vídeo final (lado maior em px). None = padrão do app (EZT_RENDER_HEIGHT)
     render_height: int | None = None
 
@@ -110,6 +112,7 @@ class ClipOut(BaseModel):
     ranker: str = "heuristic"
     video_url: str | None = None
     download_url: str | None = None  # mesmo vídeo, salvo com o título do clipe
+    cuts: list[list[float]] = []
     thumb_url: str | None = None
 
 
@@ -126,6 +129,7 @@ class ProjectOut(BaseModel):
     settings: dict
     control: str = "run"
     source_file_url: str | None = None  # vídeo original (para baixar)
+    skip_segments: list[dict] = []
     created_at: datetime
     clips: list[ClipOut] = []
 
@@ -133,6 +137,7 @@ class ProjectOut(BaseModel):
 class ClipUpdateIn(BaseModel):
     start_s: float | None = None
     end_s: float | None = None
+    cuts: list[list[float]] | None = Field(None, max_length=200)
     title: str | None = Field(None, max_length=200)
     hook: str | None = Field(None, max_length=200)
 

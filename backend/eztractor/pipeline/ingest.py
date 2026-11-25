@@ -12,6 +12,8 @@ from .media import MediaError
 class Downloaded:
     path: Path
     title: str
+    video_id: str = ""
+    extractor: str = ""
 
 
 def _format(max_height: int) -> str:
@@ -66,4 +68,5 @@ def download_url(
         if not candidates:
             raise MediaError("download concluído mas arquivo não encontrado")
         path = candidates[0]
-    return Downloaded(path, str(info.get("title") or "").strip())
+    return Downloaded(path, str(info.get("title") or "").strip(), str(info.get("id") or ""),
+                      str(info.get("extractor_key") or "").lower())

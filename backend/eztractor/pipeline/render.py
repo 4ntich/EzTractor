@@ -156,3 +156,26 @@ def render_still(src: Path | None, at_s: float, dst: Path, spec: RenderSpec, src
            "-map", "[v]", "-ss", f"{frame_at:.2f}", "-frames:v", "1", "-q:v", "3", str(dst)]
     run(cmd)
     return dst
+
+
+def cut_concat(src: Path, segs: list[tuple[float, float]], dst: Path, has_audio: bool, final: bool = False,
+               on_progress=None) -> Path:
+    """Junta os trechos [ini, fim] de `src` (remove o que ficou de fora). final=True => qualidade de entrega."""
+    n = len(segs)
+    v_split = f"[0:v]split={n}" + "".join(f"[vi{i}]" for i in range(n)) if n > 1 else "[0:v]null[vi0]"
+    parts = [v_split]
+    if has_audio:
+        parts.append(f"[0:a]asplit={n}" + "".join(f"[ai{i}]" for i in range(n)) if n > 1 else "[0:a]anull[ai0]")
+    for i, (a, b) in enumerate(segs):
+        parts.append(f"[vi{i}]trim=start={a:.3f}:end={b:.3f},setpts=PTS-STARTPTS[v{i}]")
+        if has_audio:
+            parts.append(f"[ai{i}]atrim=start={a:.3f}:end={b:.3f},asetpts=PTS-STARTPTS[a{i}]")
+    ins = "".join(f"[v{i}][a{i}]" if has_audio else f"[v{i}]" for i in range(n))
+    parts.append(f"{ins}concat=n={n}:v=1:a={1 if has_audio else 0}[v]" + ("[a]" if has_audio else ""))
+    cmd = ["ffmpeg", "-y", "-v", "error", "-i", str(src), "-filter_complex", ";".join(parts), "-map", "[v]"]
+    if has_audio:
+        cmd += ["-map", "[a]", "-c:a", "aac", "-b:a", "192k" if final else "160k"]
+    cmd += ["-c:v", "libx264", "-preset", "veryfast" if final else "ultrafast", "-crf", "20" if final else "14",
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", str(dst)]
+    run(cmd, on_progress=on_progress, duration=sum(b - a for a, b in segs))
+    return dst

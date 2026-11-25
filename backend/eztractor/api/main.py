@@ -92,7 +92,8 @@ def clip_out(c: Clip) -> ClipOut:
         id=c.id, start_s=c.start_s, end_s=c.end_s, score=c.score, title=c.title, hook=c.hook,
         reason=c.reason, render_status=c.render_status, ranker=(c.signals or {}).get("ranker", "heuristic"),
         video_url=sign(c.render_key) if ready else None,
-        download_url=sign(c.render_key, safe_filename(c.title or "clipe", ".mp4")) if ready else None,
+        download_url=sign(c.render_key, safe_filename(c.title or "clipe", Path(c.render_key).suffix)) if ready else None,
+        cuts=c.cuts or [],
         thumb_url=sign(c.thumb_key) if ready else None,
     )
 
@@ -102,6 +103,7 @@ def project_out(p: Project, with_clips: bool = True) -> ProjectOut:
         id=p.id, title=p.title, source_type=p.source_type, source_url=p.source_url,
         duration_s=p.duration_s, status=p.status, stage=p.stage, progress=p.progress, error=p.error,
         settings=p.settings or {}, control=p.control or "run", created_at=p.created_at,
+        skip_segments=p.skip_segments or [],
         source_file_url=sign(p.source_key, safe_filename(p.title, Path(p.source_key).suffix))
         if p.source_key and storage.path_for(p.source_key).exists() else None,
         clips=[clip_out(c) for c in p.clips] if with_clips else [],
@@ -264,13 +266,32 @@ def update_clip(clip_id: str, body: ClipUpdateIn, db: Session = Depends(get_db))
     clip = db.get(Clip, clip_id)
     if clip is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "clipe não encontrado")
+    if clip.project.status in ACTIVE_STATUSES or clip.render_status == "pending":
+        raise HTTPException(status.HTTP_409_CONFLICT, "aguarde a renderização atual terminar")
     start = body.start_s if body.start_s is not None else clip.start_s
     end = body.end_s if body.end_s is not None else clip.end_s
     duration = clip.project.duration_s or end
-    if not (0 <= start < end <= duration) or end - start > 180:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "intervalo inválido (máx. 180s)")
-    needs_render = (start, end) != (clip.start_s, clip.end_s) or (body.hook is not None and body.hook != clip.hook)
-    clip.start_s, clip.end_s = start, end
+    whole_video = (clip.project.settings or {}).get("mode") == "download"
+    if not (0 <= start < end <= duration + 0.05):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "início/fim inválidos")
+    cuts = clip.cuts or []
+    if body.cuts is not None:
+        cuts = []
+        for c in sorted(body.cuts, key=lambda c: c[0] if c else 0):
+            if len(c) != 2 or not (start <= c[0] < c[1] <= end):
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "corte fora do trecho do vídeo")
+            if cuts and c[0] < cuts[-1][1]:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "cortes sobrepostos")
+            cuts.append([round(c[0], 2), round(c[1], 2)])
+    cuts = [c for c in cuts if c[0] >= start and c[1] <= end]  # aparar pode descartar cortes de fora
+    final = (end - start) - sum(b - a for a, b in cuts)
+    if final < 1:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "o vídeo precisa ter pelo menos 1 segundo")
+    if not whole_video and final > 180:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "clipes podem ter no máximo 180 s")
+    needs_render = ((start, end) != (clip.start_s, clip.end_s) or cuts != (clip.cuts or [])
+                    or (body.hook is not None and body.hook != clip.hook))
+    clip.start_s, clip.end_s, clip.cuts = start, end, cuts
     if body.title is not None:
         clip.title = body.title
     if body.hook is not None:

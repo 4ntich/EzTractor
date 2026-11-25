@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 
 import ClipCard from "@/components/ClipCard";
+import ClipEditor from "@/components/ClipEditor";
 import StatusBadge from "@/components/StatusBadge";
 import { api, fileUrl, fmtTime, isBusy, Project, RENDER_QUALITIES } from "@/lib/api";
 import type { Template } from "@/lib/templates";
@@ -150,15 +151,24 @@ function ProjectView() {
         </p>
       )}
 
-      {p.settings.mode === "download" && p.status === "ready" && p.clips.length === 0 && p.source_file_url && (
-        <div className="card overflow-hidden">
-          <video src={fileUrl(p.source_file_url.split("&dl=")[0])} controls preload="metadata"
-            className="max-h-[60vh] w-full bg-black" data-testid="original-player" />
-          <div className="flex flex-wrap items-center justify-between gap-3 p-4">
-            <p className="text-sm text-zinc-300">Vídeo baixado {p.duration_s ? `(${fmtTime(p.duration_s)})` : ""}.</p>
-            <a className="btn" href={fileUrl(p.source_file_url)} download>⬇ Baixar vídeo</a>
-          </div>
-        </div>
+      {(p.skip_segments?.length ?? 0) > 0 && (
+        <details className="card px-4 py-3 text-sm">
+          <summary className="cursor-pointer text-zinc-200">
+            ⏭ {p.skip_segments!.length} trecho(s) de propaganda, inscrição ou final detectados e pulados
+          </summary>
+          <ul className="mt-2 space-y-1 text-zinc-400">
+            {p.skip_segments!.map((s, i) => (
+              <li key={i}>
+                {fmtTime(s.start)}–{fmtTime(s.end)} · {s.reason}
+                <span className="ml-1 text-xs text-zinc-500">({s.source === "sponsorblock" ? "SponsorBlock" : "fala detectada"})</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {p.settings.mode === "download" && p.status === "ready" && p.clips[0] && (
+        <DownloadResult project={p} onChange={load} />
       )}
 
       {p.status === "failed" && (
@@ -184,13 +194,43 @@ function ProjectView() {
         </div>
       )}
 
-      {p.clips.length > 0 && (
+      {p.clips.length > 0 && p.settings.mode !== "download" && (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {p.clips.map((c, i) => (
-            <ClipCard key={`${c.id}-${c.start_s}-${c.end_s}-${c.render_status}`} clip={c} rank={i + 1} onChange={load} />
+            <ClipCard key={`${c.id}-${c.start_s}-${c.end_s}-${c.render_status}`} clip={c} rank={i + 1} project={p} onChange={load} />
           ))}
         </section>
       )}
+    </div>
+  );
+}
+
+function DownloadResult({ project, onChange }: { project: Project; onChange: () => void }) {
+  const c = project.clips[0];
+  const [editing, setEditing] = useState(false);
+  const cut = (c.cuts ?? []).reduce((a, [x, y]) => a + (y - x), 0);
+  return (
+    <div className="card overflow-hidden">
+      {c.render_status === "ready" && c.video_url ? (
+        <video key={c.video_url} src={fileUrl(c.video_url)} controls preload="metadata"
+          className="max-h-[60vh] w-full bg-black" data-testid="result-player" />
+      ) : (
+        <div className="flex h-48 items-center justify-center text-sm text-zinc-400">
+          {c.render_status === "failed" ? "Falha ao gerar o vídeo" : "Gerando o vídeo editado…"}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+        <p className="text-sm text-zinc-300">
+          {fmtTime(c.start_s)}–{fmtTime(c.end_s)} · duração final {fmtTime(c.end_s - c.start_s - cut)}
+          {(c.cuts?.length ?? 0) > 0 && <span className="text-red-300"> · {c.cuts!.length} corte(s)</span>}
+        </p>
+        <div className="flex gap-2">
+          <button className="btn-ghost" onClick={() => setEditing(true)} disabled={c.render_status === "pending"}
+            data-testid="edit-download">✂ Editar / cortar</button>
+          {c.download_url && <a className="btn" href={fileUrl(c.download_url)} download>⬇ Baixar vídeo</a>}
+        </div>
+      </div>
+      {editing && <ClipEditor clip={c} project={project} onClose={() => setEditing(false)} onSaved={onChange} />}
     </div>
   );
 }

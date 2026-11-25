@@ -17,6 +17,7 @@ const DEFAULTS: ProjectSettings = {
   game: "",
   captions: true,
   ranker: null,
+  skip_ads: true,
 };
 
 function rankerHint(r: Ranker, caps: Capabilities | null): string {
@@ -291,6 +292,18 @@ export default function NewProjectForm() {
         </label>
       </div>
       )}
+
+      <label className="flex items-start gap-2 text-sm text-zinc-200">
+        <input type="checkbox" className="mt-1" checked={s.skip_ads ?? true} onChange={(e) => set("skip_ads", e.target.checked)}
+          data-testid="skip-ads" />
+        <span>
+          Pular propagandas, pedidos de inscrição e finais de vídeo
+          <span className="block text-xs text-zinc-400">
+            Detecta pela fala e, no YouTube, pelas marcações do SponsorBlock. Os cortes nunca incluem esses trechos
+            {mode === "download" ? " e o vídeo baixado sai sem eles (dá para ajustar depois no editor)." : "."}
+          </span>
+        </span>
+      </label>
 
       {error && <p className="rounded-lg bg-red-500/15 px-3 py-2 text-sm text-danger ring-1 ring-red-400/30">{error}</p>}
       <button className="btn w-full sm:w-auto" disabled={busy}>

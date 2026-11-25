@@ -14,6 +14,7 @@ export type Clip = {
   ranker: Ranker;
   video_url: string | null;
   download_url?: string | null;
+  cuts?: number[][];
   thumb_url: string | null;
 };
 
@@ -44,6 +45,7 @@ export type ProjectSettings = {
   ranker: Ranker | null;
   template_id?: string | null;
   mode?: "clips" | "download";
+  skip_ads?: boolean;
   download_height?: number;
   render_height?: number | null;
 };
@@ -57,6 +59,7 @@ export type Project = {
   status: "queued" | "processing" | "paused" | "cancelled" | "ready" | "failed";
   control: "run" | "pause" | "cancel";
   source_file_url: string | null;
+  skip_segments?: { start: number; end: number; category: string; reason: string; source: string }[];
   stage: string;
   progress: number;
   error: string | null;

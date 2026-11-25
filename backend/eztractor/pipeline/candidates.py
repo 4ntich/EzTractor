@@ -56,6 +56,7 @@ def generate(
     clip_min_s: int,
     clip_max_s: int,
     limit: int,
+    excluded: list[dict] | None = None,
 ) -> list[Candidate]:
     """Retorna até `limit` candidatos sem sobreposição, ordenados pela nota heurística."""
     duration_s = float(duration_s)
@@ -63,6 +64,9 @@ def generate(
         return [Candidate(0, 0.0, duration_s, float(sig.score().mean()) if len(sig) else 0.0)]
 
     per_sec = _smooth(sig.score())
+    excluded = excluded or []
+    for seg in excluded:  # propaganda/inscrição/final: nunca vira destaque
+        per_sec[int(seg["start"]):int(np.ceil(seg["end"])) + 1] = -5.0
     target = (clip_min_s + clip_max_s) / 2
     lengths = sorted({clip_min_s, int(round(target)), clip_max_s})
 
@@ -87,7 +91,15 @@ def generate(
             top = np.sort(window)[::-1][: max(1, len(window) // 3)]
             # média dos melhores segundos + pico, com leve penalidade para janelas longas sem conteúdo
             value = float(top.mean() + 0.5 * window.max() - 0.01 * (L - clip_min_s))
-            raw.append(Candidate(0, start, end, value))
+            cand = Candidate(0, start, end, value)
+            for seg in excluded:  # encurta a janela para não atravessar um trecho a pular
+                if min(cand.end, seg["end"]) - max(cand.start, seg["start"]) > 0:
+                    if a < seg["start"]:
+                        cand.end = min(cand.end, seg["start"])
+                    else:
+                        cand.start = max(cand.start, seg["end"])
+            if cand.end - cand.start >= min(clip_min_s * 0.6, duration_s):
+                raw.append(cand)
 
     # Não cortar o clímax: estende o fim (até clip_max_s) enquanto o momento continua "quente".
     n = len(per_sec)
@@ -96,7 +108,8 @@ def generate(
         e = int(np.ceil(c.end))
         hot = 0.5 * float(per_sec[s:e].max()) if e > s else 0.0
         extended = False
-        while hot > 0 and e < n and e - s < clip_max_s and per_sec[e] >= hot:
+        limit_e = min((seg["start"] for seg in excluded if seg["start"] >= c.end - 0.01), default=float(n))
+        while hot > 0 and e < n and e - s < clip_max_s and per_sec[e] >= hot and e < limit_e:
             e += 1
             extended = True
         if extended:

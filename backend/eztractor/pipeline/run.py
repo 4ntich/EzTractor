@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from .. import storage
 from ..config import get_settings
 from ..db import session_factory
+from ..ads import cuts_within, from_sponsorblock, from_transcript, merge, overlap
 from ..control import Cancelled, Control, activate, checkpoint
 from ..control import _current as _control_var
 from ..models import ACTIVE_STATUSES, Clip, Project, ProjectStatus, Template
@@ -20,7 +21,7 @@ from . import ranker, signals
 from .captions import build_ass, write_ass
 from .ingest import download_url
 from .media import extract_audio, probe, thumbnail
-from .render import RenderSpec, render_clip
+from .render import RenderSpec, cut_concat, render_clip
 from .template_render import build_template_ass, clip_context, normalize, template_spec
 from .transcribe import transcribe
 
@@ -57,38 +58,81 @@ def _template_config(db: Session, project: Project) -> dict | None:
     return normalize(tpl.config)
 
 
+def kept_segments(start: float, end: float, cuts: list | None) -> list[tuple[float, float]]:
+    """[start, end] menos os cortes => trechos mantidos, em ordem."""
+    segs, cur = [], start
+    for a, b in sorted((max(start, c[0]), min(end, c[1])) for c in (cuts or []) if c[1] > c[0]):
+        if a > cur + 0.05:
+            segs.append((cur, a))
+        cur = max(cur, b)
+    if end > cur + 0.05:
+        segs.append((cur, end))
+    return segs
+
+
+def remap_words(words: list[dict], segs: list[tuple[float, float]]) -> list[dict]:
+    """Leva as palavras para a linha do tempo do vídeo editado (sem os trechos cortados)."""
+    out, acc = [], 0.0
+    for a, b in segs:
+        for w in words:
+            if w["start"] >= a and w["end"] <= b + 0.05:
+                out.append({**w, "start": round(w["start"] - a + acc, 2), "end": round(min(w["end"], b) - a + acc, 2)})
+        acc += b - a
+    return out
+
+
 def _render(db: Session, project: Project, clip: Clip, workdir: Path, on_progress=None) -> None:
     st = project.settings or {}
     max_side = int(st.get("render_height") or get_settings().render_height)
     cfg = _template_config(db, project)
+    original_layout = st.get("mode") == "download" and cfg is None
+    base = f"{storage.project_dir(project.id)}/clips/{clip.id}"
+    video_key, thumb_key = f"{base}.mp4", f"{base}.jpg"
+    src = _source_path(project)
+    info = probe(src)
+    segs = kept_segments(clip.start_s, clip.end_s, clip.cuts)
+    if not segs:
+        raise ValueError("o vídeo editado ficou vazio")
+    dur = sum(b - a for a, b in segs)
+
+    if original_layout:
+        # só baixar, sem template: sem cortes o próprio arquivo é o resultado; com cortes, junta os trechos
+        if len(segs) == 1 and segs[0][0] <= 0.05 and segs[0][1] >= (project.duration_s or 0) - 0.05:
+            clip.render_key = project.source_key
+        else:
+            cut_concat(src, segs, storage.path_for(video_key), info.has_audio, final=True, on_progress=on_progress)
+            clip.render_key = video_key
+        thumbnail(storage.path_for(clip.render_key), min(3.0, dur / 2), storage.path_for(thumb_key))
+        clip.thumb_key, clip.render_status = thumb_key, "ready"
+        db.commit()
+        return
+
+    words = project.transcript or []
+    if len(segs) > 1:  # cortes no meio: junta os trechos num arquivo temporário e renderiza a partir dele
+        joined = workdir / f"{clip.id}-joined.mp4"
+        cut_concat(src, segs, joined, info.has_audio, final=False)
+        src, start, end, words = joined, 0.0, dur, remap_words(words, segs)
+    else:
+        start, end = segs[0]
+
     if cfg is not None:
         # consulta o banco: durante o processamento `project.clips` ainda não tem os clipes recém-criados
         db.flush()
         ranked = list(db.scalars(select(Clip).where(Clip.project_id == project.id)
                                  .order_by(Clip.score.desc(), Clip.start_s)))
         rank = next((i + 1 for i, c in enumerate(ranked) if c.id == clip.id), 1)
-        spec = template_spec(cfg, clip.start_s, clip.end_s, max_side, st.get("layout", "crop"), st.get("facecam"))
-        ass = build_template_ass(cfg, project.transcript or [], clip.start_s, clip.end_s,
+        spec = template_spec(cfg, start, end, max_side, st.get("layout", "crop"), st.get("facecam"))
+        ass = build_template_ass(cfg, words, start, end,
                                  clip_context(clip, project, len(ranked), rank), captions=st.get("captions", True))
     else:
-        spec = RenderSpec(
-            start=clip.start_s, end=clip.end_s, height=max_side,
-            layout=st.get("layout", "crop"), facecam=st.get("facecam"),
-        )
-        ass = build_ass(
-            project.transcript or [], clip.start_s, clip.end_s, spec.width, spec.height,
-            hook=clip.hook, captions=st.get("captions", True),
-        )
+        spec = RenderSpec(start=start, end=end, height=max_side, layout=st.get("layout", "crop"),
+                          facecam=st.get("facecam"))
+        ass = build_ass(words, start, end, spec.width, spec.height, hook=clip.hook, captions=st.get("captions", True))
     spec.ass_path = write_ass(workdir / f"{clip.id}.ass", ass)
 
-    base = f"{storage.project_dir(project.id)}/clips/{clip.id}"
-    video_key, thumb_key = f"{base}.mp4", f"{base}.jpg"
-    src = _source_path(project)
-    info = probe(src)
     out = render_clip(src, storage.path_for(video_key), spec, info.width, info.height, info.has_audio,
                       on_progress=on_progress)
-    # miniatura tirada do próprio clipe vertical (já com legenda/gancho)
-    thumbnail(out, min(1.5, (clip.end_s - clip.start_s) / 2), storage.path_for(thumb_key))
+    thumbnail(out, min(1.5, dur / 2), storage.path_for(thumb_key))
     clip.render_key, clip.thumb_key, clip.render_status = video_key, thumb_key, "ready"
     db.commit()
 
@@ -124,13 +168,16 @@ def _set_status(project_id: str, status: str) -> None:
 
 
 def _whole_video_clip(db: Session, project: Project) -> Clip:
-    """Modo "só baixar" com template: um único "clipe" com o vídeo inteiro."""
+    """Modo "só baixar": um único "clipe" com o vídeo inteiro (dá para aparar e cortar no editor)."""
     for c in list(project.clips):
         db.delete(c)
     db.flush()
-    clip = Clip(project_id=project.id, start_s=0.0, end_s=float(project.duration_s or 0), score=100,
-                title=project.title or "", hook="", reason="Vídeo completo com o template aplicado.",
-                signals={"ranker": "download"})
+    st = project.settings or {}
+    dur = float(project.duration_s or 0)
+    cuts = cuts_within(0.0, dur, project.skip_segments or []) if st.get("skip_ads", True) else []
+    clip = Clip(project_id=project.id, start_s=0.0, end_s=dur, score=100, title=project.title or "", hook="",
+                reason="Vídeo completo" + (f" sem {len(cuts)} trecho(s) de propaganda/final." if cuts else "."),
+                signals={"ranker": "download"}, cuts=cuts)
     db.add(clip)
     db.flush()
     return clip
@@ -160,6 +207,8 @@ def process_project(project_id: str) -> None:
             key = f"{storage.project_dir(project.id)}/source{dl.path.suffix}"
             shutil.move(str(dl.path), storage.path_for(key))
             project.source_key = key
+            if dl.extractor.startswith("youtube") and dl.video_id:
+                project.youtube_id = dl.video_id[:32]
             if dl.title and (not project.title or project.title == project.source_url):
                 project.title = dl.title[:255]
             db.commit()
@@ -214,6 +263,18 @@ def _transcribe_project(db: Session, project: Project, info, src: Path, workdir:
     return wav
 
 
+def _detect_skips(db: Session, project: Project, duration: float) -> None:
+    st = project.settings or {}
+    if not st.get("skip_ads", True):
+        project.skip_segments = []
+    else:
+        segs = from_transcript(project.transcript or [], duration)
+        if project.youtube_id:
+            segs += from_sponsorblock(project.youtube_id, duration)
+        project.skip_segments = merge(segs)
+    db.commit()
+
+
 def _clips_mode(db: Session, project: Project, info, src: Path, workdir: Path, prog: _Progress) -> None:
     _update(db, project, stage="transcribe", progress=15)
     wav = _transcribe_project(db, project, info, src, workdir, prog.span(15, 45))
@@ -221,11 +282,16 @@ def _clips_mode(db: Session, project: Project, info, src: Path, workdir: Path, p
     words = project.transcript or []
     _update(db, project, stage="analyze", progress=45)
 
+    _detect_skips(db, project, info.duration_s)
+    skips = project.skip_segments or []
     sig = signals.compute(src, wav, info.duration_s, words)
     checkpoint()
     max_clips = int(st.get("max_clips", 8))
     min_s, max_s = int(st.get("clip_min_s", 15)), int(st.get("clip_max_s", 45))
-    cands = cand_mod.generate(sig, info.duration_s, words, min_s, max_s, limit=max_clips * 2)
+    cands = cand_mod.generate(sig, info.duration_s, words, min_s, max_s, limit=max_clips * 2, excluded=skips)
+    for c in cands:  # avisa a IA de trechos suspeitos por perto
+        if overlap(c.start - 5, c.end + 5, skips) > 0:
+            c.stats["skip_nearby"] = True
     _update(db, project, stage="rank", progress=60)
     ranked, method = ranker.rank(cands, words, info.duration_s, st.get("game", ""), min_s, max_s,
                                  method=st.get("ranker"), language=st.get("language"))
@@ -238,7 +304,8 @@ def _clips_mode(db: Session, project: Project, info, src: Path, workdir: Path, p
     clips = []
     for r in ranked:
         clip = Clip(project_id=project.id, start_s=r.start, end_s=r.end, score=r.score, title=r.title,
-                    hook=r.hook, reason=r.reason, signals={**r.stats, "ranker": method})
+                    hook=r.hook, reason=r.reason, signals={**r.stats, "ranker": method},
+                    cuts=cuts_within(r.start, r.end, skips))  # se a IA estendeu para dentro de um trecho a pular
         db.add(clip)
         clips.append(clip)
     _update(db, project, stage="render", progress=70)
@@ -260,14 +327,10 @@ def _clips_mode(db: Session, project: Project, info, src: Path, workdir: Path, p
 def _download_mode(db: Session, project: Project, info, src: Path, workdir: Path, prog: _Progress) -> None:
     st = project.settings or {}
     cfg = _template_config(db, project)
-    if cfg is None:  # sem template: o próprio arquivo baixado é o resultado
-        for c in list(project.clips):
-            db.delete(c)
-        db.commit()
-        return
-    if st.get("captions", True):
+    if (cfg is not None and st.get("captions", True)) or st.get("skip_ads", True):
         _update(db, project, stage="transcribe", progress=45)
         _transcribe_project(db, project, info, src, workdir, prog.span(45, 60))
+    _detect_skips(db, project, info.duration_s)
     clip = _whole_video_clip(db, project)
     _update(db, project, stage="render", progress=60)
     _render(db, project, clip, workdir, on_progress=prog.span(60, 99))
@@ -300,13 +363,8 @@ def render_all(project_id: str) -> None:
         project = db.get(Project, project_id)
         if project is None:
             return
-        if (project.settings or {}).get("mode") == "download":
-            if _template_config(db, project) is None:  # sem template: só o arquivo original
-                for c in list(project.clips):
-                    db.delete(c)
-                db.commit()
-                return
-            _whole_video_clip(db, project)
+        if (project.settings or {}).get("mode") == "download" and not project.clips:
+            _whole_video_clip(db, project)  # mantém aparas/cortes de um clipe existente
             db.commit()
             db.refresh(project)
         for clip in list(project.clips):

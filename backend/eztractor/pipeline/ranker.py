@@ -49,6 +49,10 @@ Regras:
 - reason: 1 frase explicando a nota.
 - start/end: você pode refinar os limites em até 8 segundos para começar no build-up e terminar logo \
 após o clímax, mantendo a duração permitida.
+- NUNCA escolha como destaque trechos de propaganda, patrocínio, cupom, pedido de inscrição/like ou o final
+do vídeo (despedida, tela final mostrando outros canais): dê nota abaixo de 15 a esses candidatos e não
+estenda os limites para dentro desses trechos. Candidatos marcados com "skip_nearby" estão perto de um
+trecho assim.
 - Retorne todos os candidatos recebidos, sem inventar ids."""
 
 _SCHEMA = {
