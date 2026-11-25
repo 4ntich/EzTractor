@@ -22,13 +22,25 @@ if ffmpeg_dir:  # build "shared" do ffmpeg: ffmpeg.exe + ffprobe.exe + DLLs comp
     for f in [fdir / "ffmpeg.exe", fdir / "ffprobe.exe", *fdir.glob("*.dll")]:
         binaries.append((str(f), "ffmpeg"))
 
-sys.path.insert(0, str(ROOT / "backend"))  # o pacote eztractor precisa estar visível para ser coletado
+# Código protegido: se EZT_OBF_DIR existir (PyArmor), empacota o eztractor/launcher ofuscados de lá.
+OBF = os.environ.get("EZT_OBF_DIR")
+SRC = Path(OBF) if OBF else (ROOT / "backend")
+LAUNCHER = (SRC / "launcher.py") if OBF else (HERE / "launcher.py")
+sys.path.insert(0, str(SRC))
 _ezt = collect_submodules("eztractor")
 assert "eztractor.pipeline.run" in _ezt, f"módulos do eztractor não encontrados: {_ezt}"
-hiddenimports = _ezt + [
-    "anthropic", "httpx", "yt_dlp", "PIL.ImageFont", "sqlalchemy.dialects.sqlite", "python_multipart",
+# Com o código ofuscado o PyInstaller não enxerga os imports internos: liste-os aqui.
+hiddenimports = _ezt + collect_submodules("fastapi") + collect_submodules("starlette") + [
+    "anthropic", "httpx", "httpcore", "yt_dlp", "jwt", "segno", "numpy", "wave",
+    "PIL.ImageFont", "PIL.Image", "PIL.ImageDraw",
+    "uvicorn", "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.protocols.http.h11_impl",
+    "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on", "h11",
+    "pydantic", "pydantic_settings", "sqlalchemy.dialects.sqlite", "python_multipart", "multipart",
     "tkinter", "tkinter.messagebox",
 ]
+if OBF:  # runtime do PyArmor (decifra os módulos em memória)
+    runtime = next(Path(OBF).glob("pyarmor_runtime_*"))
+    hiddenimports.append(runtime.name)
 hiddenimports += ["segno", "webview", "webview.menu", "webview.platforms.edgechromium", "webview.platforms.winforms", "clr"]
 for pkg in ("faster_whisper", "ctranslate2", "onnxruntime", "tokenizers", "av", "yt_dlp", "webview"):
     try:
@@ -40,8 +52,8 @@ for pkg in ("faster_whisper", "ctranslate2", "onnxruntime", "tokenizers", "av", 
         print(f"aviso: não foi possível coletar {pkg}: {e}")
 
 a = Analysis(
-    [str(HERE / "launcher.py")],
-    pathex=[str(ROOT / "backend")],
+    [str(LAUNCHER)],
+    pathex=[str(SRC)],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,

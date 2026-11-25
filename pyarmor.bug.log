@@ -1,0 +1,12 @@
+[BUG]: out of license
+
+## Command Line
+/usr/local/lib/python3.13/site-packages/pyarmor/cli/__main__.py gen -O /tmp/claude-0/-home-user/073d5f67-a842-53dd-887c-a261d4dea488/scratchpad/obf2 --recursive --assert-call --mix-str --obf-code 2 backend/eztractor packaging/windows/launcher.py
+
+## Environments
+Python 3.13.18
+Pyarmor 9.3.1 (trial), 000000, non-profits
+Platform linux.x86_64
+Native linux.x86_64
+Home /root/.pyarmor
+

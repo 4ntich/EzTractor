@@ -118,6 +118,12 @@ O GitHub guarda e compila o app; quem **roda** é o seu PC ou um servidor (VPS) 
 
 > Se o repositório for privado, faça `docker login ghcr.io` antes do `pull`, ou use `docker compose up -d --build`.
 
+## Proteção do código
+
+O app distribuído tem o código Python **ofuscado com PyArmor**: os módulos viram bytecode cifrado, carregado em memória por um runtime próprio — não há `.py` legível no computador e o código não é decompilável como um `.pyc` comum. O site é servido já minificado.
+
+Isso **dificulta muito** a cópia, mas nenhuma proteção de software a torna impossível: quem roda o programa poderia, com esforço técnico alto, extrair parte dele. Para uso pessoal, essa camada afasta cópia casual e plágio. O PyArmor gratuito faz a ofuscação básica; recursos avançados (embaralhar strings, anti-adulteração) exigem licença paga.
+
 ## Como funciona
 
 ```
