@@ -201,6 +201,9 @@ class TemplateFrame(BaseModel):
     sideWidthPercent: float = Field(5, ge=0.1, le=45)
     headerHeightPercent: float = Field(8, ge=0.1, le=45)
     footerHeightPercent: float = Field(8, ge=0.1, le=45)
+    # linha de destaque interna (borda de duas cores) — innerPercent=0 desliga
+    color2: str = Field("#000000", pattern=HEX)
+    innerPercent: float = Field(0, ge=0, le=100)  # espessura da linha interna, % da borda
 
 
 class TemplateCaptions(BaseModel):
@@ -276,6 +279,7 @@ class TemplateOut(BaseModel):
 class TemplatePreviewIn(BaseModel):
     config: TemplateConfig
     project_id: str | None = None  # usa um quadro desse projeto como fundo
+    captions: bool = True  # mostrar a legenda de exemplo na prévia
 
 
 class ApplyTemplateIn(BaseModel):

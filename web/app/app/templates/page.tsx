@@ -27,6 +27,7 @@ export default function TemplatesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [animKey, setAnimKey] = useState(0);
+  const [showSampleCap, setShowSampleCap] = useState(true);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -167,7 +168,7 @@ export default function TemplatesPage() {
       const tok = getToken();
       if (tok) headers.Authorization = `Bearer ${tok}`;
       const res = await fetch(`${API_URL}/templates/preview`, {
-        method: "POST", headers, body: JSON.stringify({ config: cfg, project_id: previewProject || null }),
+        method: "POST", headers, body: JSON.stringify({ config: cfg, project_id: previewProject || null, captions: showSampleCap }),
       });
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail ?? "Falha na prévia");
       const blob = await res.blob();
@@ -289,14 +290,15 @@ export default function TemplatesPage() {
           <div className="mx-auto overflow-hidden rounded-xl border border-zinc-800"
             style={{ maxWidth: cfg.width >= cfg.height ? "100%" : "360px" }}>
             <TemplateCanvas cfg={cfg} families={families} selectedId={selectedId} onSelect={setSelectedId}
-              onMove={(id, x, y) => updateLayer(id, { x, y })} animateKey={animKey} />
+              onMove={(id, x, y) => updateLayer(id, { x, y })} animateKey={animKey} showCaptions={showSampleCap} />
           </div>
           <p className="text-[11px] text-zinc-500">
             Arraste os textos na tela. A linha tracejada é a área segura (fora dela a interface do TikTok/Reels pode cobrir).
           </p>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <button className="btn-ghost text-xs" onClick={() => setAnimKey((k) => k + 1)}>▶ Ver animações</button>
             <button className="btn-ghost text-xs" onClick={distribute}>Centralizar e distribuir</button>
+            <Toggle label="Legenda de exemplo" checked={showSampleCap} onChange={setShowSampleCap} />
           </div>
           <div className="card space-y-2 p-3">
             <span className="label">Prévia real (mesmo motor do vídeo final)</span>
@@ -479,6 +481,15 @@ export default function TemplatesPage() {
               {cfg.frame.footerBorder && <Range label="Altura do rodapé" value={cfg.frame.footerHeightPercent} min={1} max={45} step={0.5} onChange={(v) => updateFrame({ footerHeightPercent: v })} suffix="%" />}
               {cfg.frame.sideBorders && <Range label="Largura das bordas" value={cfg.frame.sideWidthPercent} min={0.5} max={45} step={0.5} onChange={(v) => updateFrame({ sideWidthPercent: v })} suffix="%" />}
             </div>
+            {(cfg.frame.headerBorder || cfg.frame.footerBorder || cfg.frame.sideBorders) && (
+              <div className="grid gap-3 rounded-lg border border-zinc-800 p-3 sm:grid-cols-2">
+                <span className="label sm:col-span-2">Borda personalizada (linha interna de 2ª cor)</span>
+                <Range label="Espessura da linha interna" value={cfg.frame.innerPercent ?? 0} min={0} max={60} step={1}
+                  onChange={(v) => updateFrame({ innerPercent: v })} suffix="%" />
+                {(cfg.frame.innerPercent ?? 0) > 0 &&
+                  <Color label="Cor da linha interna" value={cfg.frame.color2 ?? "#000000"} onChange={(v) => updateFrame({ color2: v })} />}
+              </div>
+            )}
             <div className="space-y-3 rounded-lg border border-zinc-800 p-3">
               <Toggle label="Barra de progresso do clipe" checked={cfg.progressBar.enabled} onChange={(v) => updateBar({ enabled: v })} />
               {cfg.progressBar.enabled && (

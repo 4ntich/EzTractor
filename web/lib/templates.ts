@@ -46,6 +46,8 @@ export type Frame = {
   sideWidthPercent: number;
   headerHeightPercent: number;
   footerHeightPercent: number;
+  color2: string;        // cor da linha interna (borda de 2 cores)
+  innerPercent: number;  // espessura da linha interna, % da borda (0 = desliga)
 };
 
 export type CaptionStyle = {
@@ -184,6 +186,7 @@ export function blankConfig(): TemplateConfig {
     frame: {
       sideBorders: false, headerBorder: false, footerBorder: false, color: "#FACC15",
       sideWidthPercent: 3, headerHeightPercent: 10, footerHeightPercent: 8,
+      color2: "#000000", innerPercent: 0,
     },
     captions: {
       fontFamily: "anton", fontSize: 84, color: "#FFFFFF", highlightColor: "#FACC15", outlineColor: "#000000",

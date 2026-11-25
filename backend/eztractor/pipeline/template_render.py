@@ -224,18 +224,28 @@ def build_template_ass(
 
 
 def frame_bars(cfg: dict, out_w: int, out_h: int) -> list[dict]:
-    """Retângulos da moldura em px do vídeo de saída."""
+    """Retângulos da moldura em px do vídeo de saída (opcional: linha interna de 2ª cor)."""
     f = cfg["frame"]
+    c, c2 = f["color"], f.get("color2", "#000000")
+    inner = max(0.0, min(100.0, f.get("innerPercent", 0)))  # % da espessura da borda
     bars = []
     if f["headerBorder"]:
-        bars.append({"x": 0, "y": 0, "w": out_w, "h": round(out_h * f["headerHeightPercent"] / 100), "color": f["color"]})
+        h = round(out_h * f["headerHeightPercent"] / 100)
+        bars.append({"x": 0, "y": 0, "w": out_w, "h": h, "color": c})
+        if inner and (t := round(h * inner / 100)) > 0:
+            bars.append({"x": 0, "y": h - t, "w": out_w, "h": t, "color": c2})
     if f["footerBorder"]:
         h = round(out_h * f["footerHeightPercent"] / 100)
-        bars.append({"x": 0, "y": out_h - h, "w": out_w, "h": h, "color": f["color"]})
+        bars.append({"x": 0, "y": out_h - h, "w": out_w, "h": h, "color": c})
+        if inner and (t := round(h * inner / 100)) > 0:
+            bars.append({"x": 0, "y": out_h - h, "w": out_w, "h": t, "color": c2})
     if f["sideBorders"]:
         w = round(out_w * f["sideWidthPercent"] / 100)
-        bars += [{"x": 0, "y": 0, "w": w, "h": out_h, "color": f["color"]},
-                 {"x": out_w - w, "y": 0, "w": w, "h": out_h, "color": f["color"]}]
+        bars += [{"x": 0, "y": 0, "w": w, "h": out_h, "color": c},
+                 {"x": out_w - w, "y": 0, "w": w, "h": out_h, "color": c}]
+        if inner and (t := round(w * inner / 100)) > 0:
+            bars += [{"x": w - t, "y": 0, "w": t, "h": out_h, "color": c2},
+                     {"x": out_w - w, "y": 0, "w": t, "h": out_h, "color": c2}]
     return bars
 
 
@@ -282,7 +292,7 @@ PREVIEW_WORDS = [  # legenda de exemplo para a prévia (tempo relativo ao iníci
 
 
 def render_preview(cfg: dict, dst, workdir, src=None, src_w: int = 1920, src_h: int = 1080, at_s: float = 0.0,
-                   max_side: int = 960, ctx: dict | None = None):
+                   max_side: int = 960, ctx: dict | None = None, captions: bool = True):
     """Gera um JPG de como o template fica no vídeo (mesmo motor do render final)."""
     from pathlib import Path
 
@@ -291,6 +301,6 @@ def render_preview(cfg: dict, dst, workdir, src=None, src_w: int = 1920, src_h: 
 
     cfg = normalize(cfg)
     spec = template_spec(cfg, 0.0, 4.0, max_side)
-    ass = build_template_ass(cfg, PREVIEW_WORDS, 0.0, 4.0, ctx or SAMPLE_CONTEXT, captions=True, preview=True)
+    ass = build_template_ass(cfg, PREVIEW_WORDS, 0.0, 4.0, ctx or SAMPLE_CONTEXT, captions=captions, preview=True)
     spec.ass_path = write_ass(Path(workdir) / "preview.ass", ass)
     return render_still(src, at_s, Path(dst), spec, src_w, src_h)

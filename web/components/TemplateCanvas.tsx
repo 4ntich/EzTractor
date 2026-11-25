@@ -88,13 +88,25 @@ export default function TemplateCanvas({
           style={{ background: "radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.75) 100%)" }} />
       )}
 
-      {/* moldura */}
-      {f.headerBorder && <div className="absolute inset-x-0 top-0" style={{ height: `${f.headerHeightPercent}%`, background: f.color }} />}
-      {f.footerBorder && <div className="absolute inset-x-0 bottom-0" style={{ height: `${f.footerHeightPercent}%`, background: f.color }} />}
+      {/* moldura (+ linha interna de 2ª cor, se innerPercent > 0) */}
+      {f.headerBorder && (
+        <div className="absolute inset-x-0 top-0" style={{ height: `${f.headerHeightPercent}%`, background: f.color }}>
+          {(f.innerPercent ?? 0) > 0 && <div className="absolute inset-x-0 bottom-0" style={{ height: `${f.innerPercent}%`, background: f.color2 }} />}
+        </div>
+      )}
+      {f.footerBorder && (
+        <div className="absolute inset-x-0 bottom-0" style={{ height: `${f.footerHeightPercent}%`, background: f.color }}>
+          {(f.innerPercent ?? 0) > 0 && <div className="absolute inset-x-0 top-0" style={{ height: `${f.innerPercent}%`, background: f.color2 }} />}
+        </div>
+      )}
       {f.sideBorders && (
         <>
-          <div className="absolute inset-y-0 left-0" style={{ width: `${f.sideWidthPercent}%`, background: f.color }} />
-          <div className="absolute inset-y-0 right-0" style={{ width: `${f.sideWidthPercent}%`, background: f.color }} />
+          <div className="absolute inset-y-0 left-0" style={{ width: `${f.sideWidthPercent}%`, background: f.color }}>
+            {(f.innerPercent ?? 0) > 0 && <div className="absolute inset-y-0 right-0" style={{ width: `${f.innerPercent}%`, background: f.color2 }} />}
+          </div>
+          <div className="absolute inset-y-0 right-0" style={{ width: `${f.sideWidthPercent}%`, background: f.color }}>
+            {(f.innerPercent ?? 0) > 0 && <div className="absolute inset-y-0 left-0" style={{ width: `${f.innerPercent}%`, background: f.color2 }} />}
+          </div>
         </>
       )}
       {cfg.progressBar.enabled && (

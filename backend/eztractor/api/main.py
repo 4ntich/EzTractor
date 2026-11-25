@@ -378,10 +378,13 @@ def preview_template(body: TemplatePreviewIn, db: Session = Depends(get_db)):
             w, h = info.width, info.height
             best = p.clips[0] if p.clips else None
             at = best.start_s if best else min(30.0, info.duration_s / 2)
-    with tempfile.TemporaryDirectory(prefix="ezt-prev-") as tmp:
+    # ignore_cleanup_errors: no Windows o antivirus/handle pode segurar o .jpg recem-criado
+    # e a falha de limpeza derrubava uma previa que ja tinha dado certo (erro intermitente).
+    with tempfile.TemporaryDirectory(prefix="ezt-prev-", ignore_cleanup_errors=True) as tmp:
         out = Path(tmp) / "preview.jpg"
         try:
-            render_preview(body.config.model_dump(), out, tmp, src=src, src_w=w, src_h=h, at_s=at)
+            render_preview(body.config.model_dump(), out, tmp, src=src, src_w=w, src_h=h, at_s=at,
+                           captions=body.captions)
         except MediaError as e:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"falha ao gerar prévia: {e}") from None
         return Response(out.read_bytes(), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
