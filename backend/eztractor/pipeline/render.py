@@ -145,8 +145,8 @@ def render_still(src: Path | None, at_s: float, dst: Path, spec: RenderSpec, src
             return dst
     if src is None:
         src_w, src_h = 1920, 1080
-        inp = ["-f", "lavfi", "-i", f"gradients=s={src_w}x{src_h}:c0=0x1e1b4b:c1=0x7c3aed:c2=0x0f172a:x0=0:y0=0"
-               f":x1={src_w}:y1={src_h}:nb_colors=3:d=4"]
+        inp = ["-f", "lavfi", "-i", f"gradients=s={src_w}x{src_h}:c0=0x3c3e42:c1=0x1a1b1e:x0=0:y0=0"
+               f":x1=0:y1={src_h}:nb_colors=2:d=4"]
         seek = []
     else:
         inp = ["-i", str(src)]
