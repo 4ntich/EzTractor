@@ -7,6 +7,11 @@ on:
     tags: ["v*"]
     paths-ignore: ["**.md"]
   workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão para publicar como Release (ex.: 0.5.0). Vazio = só gera o instalador."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -24,7 +29,9 @@ jobs:
       - name: Versão
         shell: pwsh
         run: |
-          if ($env:GITHUB_REF_TYPE -eq "tag") { $v = $env:GITHUB_REF_NAME.TrimStart("v") }
+          $req = "${{ github.event.inputs.versao }}".Trim().TrimStart("v")
+          if ($req) { $v = $req; "EZT_RELEASE=1" | Out-File -FilePath $env:GITHUB_ENV -Append }
+          elseif ($env:GITHUB_REF_TYPE -eq "tag") { $v = $env:GITHUB_REF_NAME.TrimStart("v"); "EZT_RELEASE=1" | Out-File -FilePath $env:GITHUB_ENV -Append }
           else { $v = "0.5.0-dev." + $env:GITHUB_RUN_NUMBER }
           "EZT_VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append
           Write-Host "versão $v"
@@ -98,9 +105,12 @@ jobs:
           retention-days: 30
 
       - name: Publicar Release
-        if: github.ref_type == 'tag'
+        if: env.EZT_RELEASE == '1'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ env.EZT_VERSION }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
           files: dist/EzTractor-Setup-*.exe
           name: EzTractor ${{ env.EZT_VERSION }}
           body: |
