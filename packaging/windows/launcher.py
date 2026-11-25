@@ -172,10 +172,46 @@ def _open_path(path: Path) -> None:
         os.startfile(str(path))  # type: ignore[attr-defined]
 
 
+class _DesktopApi:
+    """Métodos que a página web chama (window.pywebview.api.*) — substituem o menu branco nativo."""
+
+    def __init__(self, media_dir, url):
+        self._media = media_dir
+        self._url = url
+        self.window = None
+
+    def open_videos(self):
+        _open_path(self._media / ".")
+
+    def open_config(self):
+        _open_path(data_dir() / "config.env")
+
+    def open_browser(self):
+        webbrowser.open(self._url)
+
+    def quit(self):
+        if self.window:
+            self.window.destroy()
+
+
+def _dark_titlebar(window) -> None:
+    """Pinta a barra de título do Windows de escuro (combina com o app em vez do branco padrão)."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        hwnd = ctypes.windll.user32.GetForegroundWindow()
+        val = ctypes.c_int(1)
+        for attr in (20, 19):  # DWMWA_USE_IMMERSIVE_DARK_MODE (Win10 2004+ e builds antigas)
+            ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(val), ctypes.sizeof(val))
+    except Exception:
+        pass
+
+
 def run_app(smoke: bool = False) -> int:
     """Abre o EzTractor numa janela própria (sem navegador). Retorna o código de saída."""
     import webview
-    from webview.menu import Menu, MenuAction, MenuSeparator
 
     port = already_running()
     server = None
@@ -190,16 +226,12 @@ def run_app(smoke: bool = False) -> int:
 
     webview.settings["ALLOW_DOWNLOADS"] = True  # botões "Baixar" abrem o "Salvar como"
     webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
-    menu = [Menu(APP_NAME, [
-        MenuAction("Pasta dos vídeos", lambda: _open_path(d / "media" / ".")),
-        MenuAction("Configurações (config.env)", lambda: _open_path(data_dir() / "config.env")),
-        MenuSeparator(),
-        MenuAction("Abrir no navegador", lambda: webbrowser.open(url)),
-        MenuSeparator(),
-        MenuAction("Sair", lambda: window.destroy()),
-    ])]
+    api = _DesktopApi(d / "media", url)
+    # sem menu nativo (a barra branca): as ações vão para um menu dentro do app, nas cores do tema
     window = webview.create_window(APP_NAME, url, width=1320, height=880, min_size=(420, 600),
-                                   background_color="#04313B", menu=menu, text_select=True)
+                                   background_color="#04313B", text_select=True, js_api=api)
+    api.window = window
+    window.events.loaded += lambda: _dark_titlebar(window)
     result = {"code": 0}
 
     def smoke_check():  # --gui-smoke: confirma que a janela abriu e o app carregou dentro dela

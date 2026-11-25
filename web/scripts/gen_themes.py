@@ -29,13 +29,11 @@ ACCENTS = {
 THEMES = {
     # nome: (superfície, destaque, texto do botão, fundo escuro, fundo claro, vidro molhado?)
     "aero": ("teal", "blue", "#FFFFFF",
-             "radial-gradient(1100px 650px at 8% -8%, rgba(64,224,208,.38), transparent 60%),"
-             "radial-gradient(900px 600px at 102% 6%, rgba(0,160,210,.32), transparent 62%),"
-             "radial-gradient(800px 500px at 50% 110%, rgba(20,184,166,.22), transparent 60%),"
-             "linear-gradient(160deg, #04313B 0%, #064852 45%, #022730 100%)",
-             "radial-gradient(1100px 650px at 8% -8%, rgba(64,224,208,.45), transparent 60%),"
-             "radial-gradient(900px 600px at 102% 6%, rgba(0,160,210,.28), transparent 62%),"
-             "linear-gradient(160deg, #E3F7F9 0%, #CDEEF2 50%, #E9F8FA 100%)", True),
+             "radial-gradient(1400px 900px at 12% -20%, rgba(64,224,208,.20), transparent 80%),"
+             "radial-gradient(1200px 800px at 100% 0%, rgba(0,160,210,.16), transparent 82%),"
+             "linear-gradient(165deg, #063B46 0%, #04303A 55%, #042A33 100%)",
+             "radial-gradient(1400px 900px at 12% -20%, rgba(64,224,208,.28), transparent 82%),"
+             "linear-gradient(165deg, #EAF8FA 0%, #DAEFF3 55%, #EAF8FA 100%)", True),
     "violeta": ("zinc", "violet", "#FFFFFF",
                 "radial-gradient(1000px 600px at 10% -10%, rgba(139,92,246,.30), transparent 60%),"
                 "radial-gradient(800px 600px at 100% 10%, rgba(236,72,153,.18), transparent 60%),"

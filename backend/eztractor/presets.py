@@ -132,7 +132,7 @@ PRESETS: list[dict] = [
         "description": "Fonte pixel, bordas magenta, efeito máquina de escrever e vinheta.",
         "config": cfg(
             vignette=True, accentColor="#FF2BD6",
-            frame=F(sideBorders=True, color="#FF2BD6", sideWidthPercent=2.5),
+            frame=F(sideBorders=True, color="#FFFFFF", sideWidthPercent=2.5),
             layers=[
                 L("hook", "{gancho}", kind="title", fontFamily="pixel", fontSize=36, y=12, color="#FFE600",
                   outlineWidth=4, uppercase=True, boxWidth=86, animation="typewriter"),
@@ -148,7 +148,7 @@ PRESETS: list[dict] = [
         "description": "Fonte militar, cabeçalho verde-oliva e selo de killcam.",
         "config": cfg(
             vignette=True, accentColor="#C2B280",
-            frame=F(headerBorder=True, color="#3F4A2A", headerHeightPercent=9),
+            frame=F(headerBorder=True, color="#FFFFFF", headerHeightPercent=9),
             layers=[
                 L("title", "{titulo}", kind="title", fontFamily="blackops", fontSize=46, y=4.6, color="#E8E3C8",
                   uppercase=True, boxWidth=92),
@@ -201,10 +201,10 @@ PRESETS: list[dict] = [
         ),
     },
     {
-        "key": "moldura-ouro", "name": "Moldura Dourada", "category": "Clean",
-        "description": "Bordas douradas em volta, título serifado e assinatura.",
+        "key": "moldura-ouro", "name": "Moldura Branca", "category": "Clean",
+        "description": "Bordas brancas em volta, título serifado e assinatura.",
         "config": cfg(
-            frame=F(sideBorders=True, headerBorder=True, footerBorder=True, color="#C9AE73",
+            frame=F(sideBorders=True, headerBorder=True, footerBorder=True, color="#FFFFFF",
                     sideWidthPercent=2, headerHeightPercent=10, footerHeightPercent=7),
             layers=[
                 L("title", "{titulo}", kind="title", fontFamily="serif", fontSize=48, y=5, color="#1C1917",

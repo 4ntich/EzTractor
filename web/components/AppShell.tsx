@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 
 import Logo from "@/components/Logo";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
+import DesktopMenu from "@/components/DesktopMenu";
 import UpdateBanner from "@/components/UpdateBanner";
 import { api, getToken, setToken, SystemInfo } from "@/lib/api";
 
@@ -42,6 +43,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <DesktopMenu />
             <ThemeSwitcher />
             {locked && (
               <button

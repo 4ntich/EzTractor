@@ -197,7 +197,7 @@ class TemplateFrame(BaseModel):
     sideBorders: bool = False
     headerBorder: bool = False
     footerBorder: bool = False
-    color: str = Field("#C9AE73", pattern=HEX)
+    color: str = Field("#FFFFFF", pattern=HEX)
     sideWidthPercent: float = Field(5, ge=0.1, le=45)
     headerHeightPercent: float = Field(8, ge=0.1, le=45)
     footerHeightPercent: float = Field(8, ge=0.1, le=45)
