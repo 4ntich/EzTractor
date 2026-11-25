@@ -175,10 +175,11 @@ def _open_path(path: Path) -> None:
 class _DesktopApi:
     """Métodos que a página web chama (window.pywebview.api.*) — substituem o menu branco nativo."""
 
+    # Só métodos públicos aqui: um atributo público (ex.: a janela) quebra a ponte JS do pywebview.
     def __init__(self, media_dir, url):
         self._media = media_dir
         self._url = url
-        self.window = None
+        self._window = None
 
     def open_videos(self):
         _open_path(self._media / ".")
@@ -190,8 +191,8 @@ class _DesktopApi:
         webbrowser.open(self._url)
 
     def quit(self):
-        if self.window:
-            self.window.destroy()
+        if self._window:
+            self._window.destroy()
 
 
 def _dark_titlebar(window) -> None:
@@ -230,7 +231,7 @@ def run_app(smoke: bool = False) -> int:
     # sem menu nativo (a barra branca): as ações vão para um menu dentro do app, nas cores do tema
     window = webview.create_window(APP_NAME, url, width=1320, height=880, min_size=(420, 600),
                                    background_color="#04313B", text_select=True, js_api=api)
-    api.window = window
+    api._window = window
     window.events.loaded += lambda: _dark_titlebar(window)
     result = {"code": 0}
 
