@@ -12,6 +12,14 @@ App **de uso pessoal**: sem cadastro, sem créditos e sem marca d'água. **Funci
 
 Os vídeos, projetos e configurações ficam em `%LOCALAPPDATA%\EzTractor` (o botão **Configurações** da janelinha abre o `config.env`). Desinstalar não apaga esses dados.
 
+## Usar no celular
+
+O celular usa o EzTractor que roda no seu PC, pela mesma rede Wi-Fi (o processamento fica no computador). Na página **Celular**: ligue o acesso, defina uma senha, e abra pelo QR code ou digitando o endereço mostrado. No celular, "Adicionar à tela inicial" cria um atalho com ícone. O PC precisa ficar ligado com o EzTractor aberto.
+
+## Atualização automática
+
+O app avisa quando há versão nova e, com um clique em **Atualizar agora**, baixa, verifica, instala e reabre sozinho — sem baixar nada à mão. Requer os Releases públicos.
+
 ## Aparência
 
 Tema padrão **Aero Turquesa**: fundo turquesa escuro, painéis de vidro molhado e botões azuis brilhantes. No topo há o botão de **modo claro/escuro** e o seletor de **temas**: Aero Turquesa, Violeta Neon, Ouro Noir, Esmeralda e Pôr do Sol. A escolha fica salva no navegador. As cores ficam em `web/scripts/gen_themes.py`.

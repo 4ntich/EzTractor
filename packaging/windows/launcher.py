@@ -24,6 +24,7 @@ import webbrowser
 from pathlib import Path
 
 APP_NAME = "EzTractor"
+APP_VERSION = "dev"  # substituído no build (sed) pela versão real
 PORT_RANGE = range(8765, 8785)
 
 
@@ -84,8 +85,9 @@ def configure_env(selftest: bool = False) -> Path:
     b = bundle_dir()
     d = data_dir() / ("selftest" if selftest else "")
     d.mkdir(parents=True, exist_ok=True)
+    cfg_path = None
     if not selftest:
-        load_user_config(data_dir())
+        cfg_path = load_user_config(data_dir())
     ffmpeg_dir = b / "ffmpeg"
     if ffmpeg_dir.is_dir():
         os.environ["PATH"] = str(ffmpeg_dir) + os.pathsep + os.environ.get("PATH", "")
@@ -98,7 +100,12 @@ def configure_env(selftest: bool = False) -> Path:
         "EZT_QUEUE_MODE": "inline",
         "EZT_CORS_ORIGINS": "http://127.0.0.1",
         "HF_HOME": str(data_dir() / "models"),
+        "EZT_APP_VERSION": APP_VERSION,
+        "EZT_TRUST_LOCALHOST": "1",   # a janela do app (localhost) nunca pede senha
+        "EZT_UPDATER": "1",           # atualização automática disponível
     })
+    if cfg_path is not None:
+        os.environ["EZT_CONFIG_FILE"] = str(cfg_path)
     if not os.environ.get("EZT_JWT_SECRET"):
         secret = data_dir() / ".secret"
         if not secret.exists():
@@ -143,7 +150,8 @@ def start_server(port: int, log_file: Path):
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     from eztractor.api.main import app
 
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_config=None, loop="asyncio",
+    host = "0.0.0.0" if os.environ.get("EZT_LAN_ACCESS", "0") in ("1", "true", "True") else "127.0.0.1"
+    config = uvicorn.Config(app, host=host, port=port, log_config=None, loop="asyncio",
                             http="h11", ws="none", lifespan="on")
     server = uvicorn.Server(config)
     t = threading.Thread(target=server.run, daemon=True)
@@ -174,6 +182,7 @@ def run_app(smoke: bool = False) -> int:
     if port is None:
         d = configure_env()
         port = free_port()
+        os.environ["EZT_PORT"] = str(port)
         server = start_server(port, data_dir() / "eztractor.log")
     else:
         d = data_dir()
@@ -233,6 +242,7 @@ def run_browser_fallback() -> None:
     from tkinter import messagebox
 
     port = free_port()
+    os.environ["EZT_PORT"] = str(port)
     try:
         server = start_server(port, log_file)
     except Exception:
@@ -395,7 +405,24 @@ def selftest() -> int:
         return 1
 
 
+def _wait_pid(pid: int) -> None:
+    import ctypes
+
+    h = ctypes.windll.kernel32.OpenProcess(0x00100000, False, pid) if sys.platform == "win32" else 0
+    if h:
+        ctypes.windll.kernel32.WaitForSingleObject(h, 15000)
+        ctypes.windll.kernel32.CloseHandle(h)
+    else:
+        time.sleep(2)
+
+
 def main() -> None:
+    if "--wait-pid" in sys.argv:
+        i = sys.argv.index("--wait-pid")
+        try:
+            _wait_pid(int(sys.argv[i + 1]))
+        except (ValueError, IndexError):
+            pass
     if "--selftest" in sys.argv:
         os._exit(selftest())
     if "--gui-smoke" in sys.argv:

@@ -150,3 +150,23 @@ export const DOWNLOAD_QUALITIES: { value: number; label: string }[] = [
 
 export const isBusy = (p: Pick<Project, "status">) =>
   p.status === "queued" || p.status === "processing" || p.status === "paused";
+
+export type SystemInfo = {
+  version: string;
+  can_update: boolean;
+  can_restart: boolean;
+  is_local: boolean;
+  lan: { enabled: boolean; configurable: boolean; password_set: boolean; urls: string[] };
+};
+
+export type UpdateInfo = {
+  current: string;
+  latest?: string;
+  available: boolean;
+  notes?: string;
+  page?: string;
+  error?: string;
+  status: "idle" | "downloading" | "installing" | "error";
+  progress: number;
+  can_install: boolean;
+};

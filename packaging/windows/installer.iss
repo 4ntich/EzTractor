@@ -28,6 +28,7 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
+RestartApplications=no
 
 [Languages]
 Name: "ptbr"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
@@ -42,7 +43,15 @@ Source: "..\..\dist\EzTractor\*"; DestDir: "{app}"; Flags: ignoreversion recurse
 Name: "{autoprograms}\EzTractor"; Filename: "{app}\EzTractor.exe"
 Name: "{autodesktop}\EzTractor"; Filename: "{app}\EzTractor.exe"; Tasks: desktopicon
 
+[Code]
+function RelaunchRequested: Boolean;
+begin
+  Result := WizardSilent and (Pos('/RELAUNCH', GetCmdTail) > 0);
+end;
+
 [Run]
 Filename: "{app}\EzTractor.exe"; Description: "Abrir o EzTractor agora"; Flags: nowait postinstall skipifsilent
+; atualização automática (instalação silenciosa com /RELAUNCH): reabre o app
+Filename: "{app}\EzTractor.exe"; Flags: nowait runasoriginaluser; Check: RelaunchRequested
 
 ; Os vídeos, projetos e configurações ficam em %LOCALAPPDATA%\EzTractor e NÃO são apagados ao desinstalar.

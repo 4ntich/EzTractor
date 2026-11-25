@@ -9,16 +9,17 @@ from pathlib import Path
 from urllib.parse import quote
 
 import jwt
-from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .. import storage
-from ..auth import check_password, create_token, password_required, require_auth
+from .. import system, updater
+from ..auth import check_password, create_token, is_local, password_required, require_auth
 from ..config import get_settings
 from ..db import get_db, init_db
 from ..fonts import catalog as fonts_catalog
@@ -403,6 +404,78 @@ def apply_template(project_id: str, body: ApplyTemplateIn, db: Session = Depends
     return project_out(p)
 
 
+# ---------- sistema: versão, atualização, acesso pelo celular
+def _local_only(request: Request) -> None:
+    if not is_local(request):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "só pode ser alterado no computador onde o EzTractor está instalado")
+
+
+@api.get("/system/info")
+def system_info(request: Request):
+    s = get_settings()
+    return {"version": s.app_version, "can_update": updater.can_install(), "can_restart": system.can_restart(),
+            "is_local": is_local(request), "lan": system.lan_info()}
+
+
+@api.get("/system/update")
+def check_update(force: bool = False):
+    return {**updater.state(), **updater.latest(force=force)}
+
+
+@api.post("/system/update/install")
+def install_update(request: Request):
+    _local_only(request)
+    try:
+        return updater.install()
+    except RuntimeError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
+
+
+@api.get("/system/update/progress")
+def update_progress():
+    return updater.state()
+
+
+class LanIn(BaseModel):
+    enabled: bool
+    password: str | None = None
+
+
+@api.post("/system/lan")
+def set_lan(body: LanIn, request: Request):
+    _local_only(request)
+    s = get_settings()
+    values = {"EZT_LAN_ACCESS": "1" if body.enabled else "0"}
+    if body.password:
+        if len(body.password) < 6:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a senha precisa ter pelo menos 6 caracteres")
+        values["EZT_APP_PASSWORD"] = body.password
+    elif body.enabled and not s.app_password:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "defina uma senha para o acesso pelo celular")
+    try:
+        system.write_config(values)
+    except RuntimeError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
+    return {"saved": True, "restart_required": True}
+
+
+@api.post("/system/restart")
+def restart_app(request: Request):
+    _local_only(request)
+    try:
+        system.restart()
+    except RuntimeError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
+    return {"restarting": True}
+
+
+@api.get("/system/qr.svg")
+def qr(data: str):
+    if len(data) > 300:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "texto longo demais")
+    return Response(system.qr_svg(data), media_type="image/svg+xml")
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="EzTractor API", version="0.2.0", lifespan=_lifespan)
     app.add_middleware(
@@ -418,8 +491,9 @@ def create_app() -> FastAPI:
         return {"ok": True}
 
     @app.get("/auth/status", response_model=AuthStatusOut)
-    def auth_status():
-        return AuthStatusOut(password_required=password_required())
+    def auth_status(request: Request):
+        trusted = get_settings().trust_localhost and is_local(request)
+        return AuthStatusOut(password_required=password_required() and not trusted)
 
     @app.post("/auth/login", response_model=TokenOut)
     def login(body: LoginIn):

@@ -23,6 +23,16 @@ class Settings(BaseSettings):
     # Senha de acesso. Vazia = sem login (uso só na sua máquina).
     # Defina uma senha se for publicar o app na internet.
     app_password: str = ""
+    # app Windows: requisições da própria máquina (a janela do app) não pedem senha
+    trust_localhost: bool = False
+    # aceitar conexões de outros aparelhos da rede (celular no mesmo Wi-Fi)
+    lan_access: bool = False
+    config_file: str = ""  # config.env do app Windows (a página "Celular" grava nele)
+
+    # versão e atualização
+    app_version: str = "dev"
+    updater: bool = False  # True só no app Windows instalado
+    update_url: str = "https://api.github.com/repos/4ntich/EzTractor/releases/latest"
 
     max_upload_mb: int = 8192
     max_video_minutes: int = 600

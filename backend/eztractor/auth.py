@@ -8,7 +8,7 @@ import hmac
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import get_settings
@@ -31,8 +31,15 @@ def create_token() -> str:
 _bearer = HTTPBearer(auto_error=False)
 
 
-def require_auth(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> None:
+def is_local(request: Request) -> bool:
+    host = request.client.host if request.client else ""
+    return host in ("127.0.0.1", "::1", "localhost")
+
+
+def require_auth(request: Request, creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> None:
     if not password_required():
+        return
+    if get_settings().trust_localhost and is_local(request):
         return
     if creds is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Não autenticado")

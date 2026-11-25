@@ -6,13 +6,15 @@ import { useEffect, useState } from "react";
 
 import Logo from "@/components/Logo";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
-import { api, getToken, setToken } from "@/lib/api";
+import UpdateBanner from "@/components/UpdateBanner";
+import { api, getToken, setToken, SystemInfo } from "@/lib/api";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const path = usePathname() ?? "";
   const [ready, setReady] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [sys, setSys] = useState<SystemInfo | null>(null);
 
   useEffect(() => {
     api<{ password_required: boolean }>("/auth/status")
@@ -22,6 +24,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         else setReady(true);
       })
       .catch(() => setReady(true)); // a própria página mostrará o erro de conexão
+    api<SystemInfo>("/system/info").then(setSys).catch(() => {});
   }, [router]);
 
   return (
@@ -33,6 +36,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="flex items-center gap-1">
               <Link href="/app" className="nav-link" data-active={!path.startsWith("/app/templates")}>Projetos</Link>
               <Link href="/app/templates" className="nav-link" data-active={path.startsWith("/app/templates")}>Templates</Link>
+              {sys?.is_local && (
+                <Link href="/app/celular" className="nav-link" data-active={path.startsWith("/app/celular")}>Celular</Link>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -51,7 +57,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </nav>
       </header>
-      <main className="ezt-rise mx-auto max-w-6xl px-4 py-8 sm:px-6">{ready ? children : null}</main>
+      <main className="ezt-rise mx-auto max-w-6xl px-4 py-8 sm:px-6">
+        {ready && sys?.is_local && <UpdateBanner />}
+        {ready ? children : null}
+      </main>
     </>
   );
 }

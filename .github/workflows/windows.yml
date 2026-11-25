@@ -61,6 +61,12 @@ jobs:
           & "$bin\ffmpeg.exe" -hide_banner -filters | Select-String " ass "
           "EZT_FFMPEG_DIR=$bin" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Versão no app
+        shell: pwsh
+        run: |
+          (Get-Content packaging/windows/launcher.py) -replace 'APP_VERSION = "dev"', "APP_VERSION = `"$env:EZT_VERSION`"" | Set-Content packaging/windows/launcher.py
+          Select-String 'APP_VERSION =' packaging/windows/launcher.py | Select-Object -First 1
+
       - name: Empacotar (PyInstaller)
         run: pyinstaller packaging/windows/eztractor.spec --noconfirm --distpath dist --workpath build
 
