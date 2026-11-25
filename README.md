@@ -2,6 +2,8 @@
 
 Transforma gravações longas de gameplay (VODs da Twitch, YouTube, Kick ou arquivo enviado) em **clipes verticais 9:16** com legenda animada, gancho e **nota de potencial viral (0–100)**, prontos para TikTok, Reels e Shorts.
 
+App **de uso pessoal**: sem cadastro, sem créditos, sem planos e sem marca d'água. Opcionalmente protegido por uma senha única.
+
 ```
 web (Next.js) ──► api (FastAPI) ──► fila (Redis/RQ) ──► worker (pipeline de vídeo)
                      │                                     │
@@ -22,19 +24,17 @@ web (Next.js) ──► api (FastAPI) ──► fila (Redis/RQ) ──► worker
 | Render | `pipeline/render.py` | ffmpeg: layouts `crop` (recorte central), `fit` (vídeo inteiro + fundo desfocado), `split` (webcam em cima + jogo embaixo) |
 | Orquestração | `pipeline/run.py` | Estados, progresso, cobrança e estorno de créditos |
 
-## Regras de negócio
+## Acesso
 
-- **Créditos:** 1 crédito = 1 minuto de vídeo (arredondado para cima). Bônus de 120 no cadastro. Débito único por projeto; **estorno automático** se o processamento falhar. O saldo é a soma do extrato imutável (`credit_ledger`).
-- **Planos** (`models.PLAN_LIMITS`):
-  - `free`: 720×1280, com marca d'água, vídeos de até 60 min.
-  - `pro`: 1080×1920, sem marca d'água, vídeos de até 6 h.
-- Os arquivos são servidos por **URL assinada** com validade de 6 h, porque a tag `<video>` não envia o header `Authorization`.
-- Editar o início, o fim ou o gancho de um clipe dispara um novo render só daquele clipe.
+- Sem `EZT_APP_PASSWORD`, o app fica aberto, ideal para rodar só no seu computador.
+- Com `EZT_APP_PASSWORD=...`, o site pede essa senha. **Use sempre uma senha se for publicar o app na internet.**
+- Os vídeos são servidos por **URL assinada** com validade de 6 h, porque a tag `<video>` não envia o header de login.
+- Editar o início, o fim ou o gancho de um clipe gera de novo só aquele clipe.
 
 ## Rodando com Docker
 
 ```bash
-cp .env.example .env   # defina EZT_JWT_SECRET e, opcionalmente, ANTHROPIC_API_KEY
+cp .env.example .env   # coloque sua ANTHROPIC_API_KEY (e uma senha, se for expor na internet)
 docker compose up --build
 # web: http://localhost:3000  ·  API: http://localhost:8000/docs
 ```
@@ -65,11 +65,14 @@ Para usar a fila de verdade, defina `EZT_QUEUE_MODE=rq` e rode `python -m eztrac
 | `QUEUE_MODE` | `inline` | `rq` (Redis + worker), `inline` (thread na API) ou `sync` (testes) |
 | `REDIS_URL` | `redis://localhost:6379/0` | |
 | `STORAGE_DIR` | `./data` | Onde ficam os vídeos e os clipes |
-| `JWT_SECRET` | valor de dev | **Troque em produção** |
+| `APP_PASSWORD` | vazio | Senha de acesso. Vazio = sem login |
+| `JWT_SECRET` | valor de dev | **Troque se publicar na internet** |
+| `RENDER_HEIGHT` | `1920` | `1920` = 1080×1920; `1280` = 720×1280 (mais rápido) |
+| `MAX_VIDEO_MINUTES` | `600` | Limite de duração do vídeo |
+| `CLAUDE_MODEL` | `claude-opus-5-5` | Modelo usado no ranking |
 | `RANKER` | `claude` | `claude` ou `heuristic`. O modo `claude` lê `ANTHROPIC_API_KEY` |
 | `TRANSCRIBER` | `faster_whisper` | `faster_whisper` ou `none` |
 | `WHISPER_MODEL` | `small` | `tiny` … `large-v3` |
-| `SIGNUP_BONUS_CREDITS` | `120` | |
 
 ## Testes
 
@@ -77,14 +80,14 @@ Para usar a fila de verdade, defina `EZT_QUEUE_MODE=rq` e rode `python -m eztrac
 cd backend && pytest -q
 ```
 
-A suíte gera um vídeo sintético com ffmpeg (com um pico de áudio em um trecho conhecido) e verifica o fluxo completo: cadastro → upload → cobrança → clipes ranqueados → render 720×1280 → URL assinada → edição com novo render → estorno em caso de falha → isolamento entre usuários. O ranking com Claude é testado com o cliente mockado.
+A suíte gera um vídeo sintético com ffmpeg (com um pico de áudio em um trecho conhecido) e verifica o fluxo completo: upload → clipes ranqueados cobrindo o pico → render vertical → URL assinada → edição com novo render → exclusão. Também cobre o modo com senha e as falhas de download. O ranking com Claude é testado com o cliente mockado.
 
 ## API
 
 | Método | Rota | |
 |---|---|---|
-| POST | `/auth/register`, `/auth/login` | Retorna `{token}` (JWT) |
-| GET | `/me` | Plano e saldo de créditos |
+| GET | `/auth/status` | `{password_required}` |
+| POST | `/auth/login` | `{password}` → `{token}` (só quando há senha) |
 | POST | `/projects/url` | `{url, title, settings}` |
 | POST | `/projects/upload` | multipart: `file`, `title`, `settings` (JSON) |
 | GET | `/projects`, `/projects/{id}` | O detalhe inclui os clipes com URLs assinadas |
@@ -96,13 +99,11 @@ A suíte gera um vídeo sintético com ffmpeg (com um pico de áudio em um trech
 
 ## Roadmap
 
-- [x] Fase 0: base (auth, banco, storage, fila)
+- [x] Fase 0: base (banco, storage, fila, senha opcional)
 - [x] Fase 1: detecção e ranking de destaques
 - [x] Fase 2: render 9:16, legendas, layouts
 - [x] Fase 4 (parcial): ingestão por link via yt-dlp
-- [ ] Fase 3: Stripe (assinatura Pro, pacotes de créditos, webhooks)
 - [ ] Migrações com Alembic (hoje é `create_all`)
-- [ ] Storage S3/R2 com URLs pré-assinadas
 - [ ] Detecção automática da webcam (MediaPipe/YOLO) e reenquadramento com acompanhamento
 - [ ] Sinal do chat da Twitch e OCR do HUD (kills/vitória)
 - [ ] Editor com linha do tempo e estilos de legenda

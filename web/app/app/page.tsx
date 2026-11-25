@@ -3,13 +3,11 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
-import { useMe } from "@/components/AppShell";
 import NewProjectForm from "@/components/NewProjectForm";
 import StatusBadge from "@/components/StatusBadge";
 import { api, fmtTime, Project } from "@/lib/api";
 
 export default function Dashboard() {
-  const { refresh: refreshMe } = useMe();
   const [projects, setProjects] = useState<Project[] | null>(null);
 
   const load = useCallback(() => {
@@ -31,7 +29,7 @@ export default function Dashboard() {
     <div className="space-y-10">
       <section>
         <h1 className="mb-4 text-2xl font-bold">Novo projeto</h1>
-        <NewProjectForm onCreated={refreshMe} />
+        <NewProjectForm />
       </section>
 
       <section>

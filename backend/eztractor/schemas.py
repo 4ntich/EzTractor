@@ -3,22 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 
-class RegisterIn(BaseModel):
-    email: str
-    password: str = Field(min_length=8)
-    name: str = ""
-
-    @field_validator("email")
-    @classmethod
-    def _email(cls, v: str) -> str:
-        v = v.strip().lower()
-        if "@" not in v or "." not in v.split("@")[-1]:
-            raise ValueError("e-mail inválido")
-        return v
-
-
 class LoginIn(BaseModel):
-    email: str
     password: str
 
 
@@ -26,12 +11,8 @@ class TokenOut(BaseModel):
     token: str
 
 
-class MeOut(BaseModel):
-    id: str
-    email: str
-    name: str
-    plan: str
-    credits: int
+class AuthStatusOut(BaseModel):
+    password_required: bool
 
 
 class FacecamRect(BaseModel):
@@ -100,7 +81,6 @@ class ProjectOut(BaseModel):
     progress: int
     error: str | None
     settings: dict
-    credits_charged: int
     created_at: datetime
     clips: list[ClipOut] = []
 

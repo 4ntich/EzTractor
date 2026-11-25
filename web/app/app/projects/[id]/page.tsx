@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { useMe } from "@/components/AppShell";
 import ClipCard from "@/components/ClipCard";
 import StatusBadge from "@/components/StatusBadge";
 import { api, fmtTime, Project } from "@/lib/api";
@@ -12,7 +11,6 @@ import { api, fmtTime, Project } from "@/lib/api";
 export default function ProjectPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { refresh: refreshMe } = useMe();
   const [p, setP] = useState<Project | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,10 +31,6 @@ export default function ProjectPage() {
     const t = setInterval(load, 3000);
     return () => clearInterval(t);
   }, [busy, rendering, load]);
-
-  useEffect(() => {
-    if (p?.status === "ready" || p?.status === "failed") refreshMe();
-  }, [p?.status, refreshMe]);
 
   async function reprocess() {
     await api(`/projects/${id}/reprocess`, { method: "POST" });
@@ -61,7 +55,7 @@ export default function ProjectPage() {
           <h1 className="truncate text-2xl font-bold">{p.title}</h1>
           <p className="mt-1 text-sm text-zinc-500">
             {p.duration_s ? `${fmtTime(p.duration_s)} de vídeo · ` : ""}
-            {p.credits_charged} crédito(s) · layout {p.settings.layout}
+            layout {p.settings.layout}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -86,7 +80,7 @@ export default function ProjectPage() {
 
       {p.status === "failed" && (
         <p className="rounded-lg bg-red-950 px-4 py-3 text-sm text-red-300">
-          {p.error ?? "Falha no processamento"}. Seus créditos foram devolvidos.
+          {p.error ?? "Falha no processamento"}
         </p>
       )}
 

@@ -13,12 +13,16 @@ class Settings(BaseSettings):
     queue_mode: str = "inline"
     storage_dir: Path = Path("./data")
     jwt_secret: str = "dev-only-secret-change-me-in-production-0123456789"
-    jwt_ttl_hours: int = 24 * 7
+    jwt_ttl_hours: int = 24 * 30
     cors_origins: str = "http://localhost:3000"
 
-    # Créditos: 1 crédito por minuto de vídeo processado (arredondado para cima)
-    signup_bonus_credits: int = 120
-    max_upload_mb: int = 4096
+    # Senha de acesso. Vazia = sem login (uso só na sua máquina).
+    # Defina uma senha se for publicar o app na internet.
+    app_password: str = ""
+
+    max_upload_mb: int = 8192
+    max_video_minutes: int = 600
+    render_height: int = 1920  # 1920 => 1080x1920; 1280 => 720x1280 (mais rápido)
 
     # IA
     transcriber: str = "faster_whisper"  # faster_whisper | none

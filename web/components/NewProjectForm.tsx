@@ -23,7 +23,7 @@ const CORNERS: Record<string, { x: number; y: number }> = {
   "inf-dir": { x: 0.72, y: 0.7 },
 };
 
-export default function NewProjectForm({ onCreated }: { onCreated?: () => void }) {
+export default function NewProjectForm() {
   const router = useRouter();
   const [source, setSource] = useState<"url" | "upload">("url");
   const [url, setUrl] = useState("");
@@ -59,7 +59,6 @@ export default function NewProjectForm({ onCreated }: { onCreated?: () => void }
         form.append("settings", JSON.stringify(settings));
         project = await api<Project>("/projects/upload", { method: "POST", body: form });
       }
-      onCreated?.();
       router.push(`/app/projects/${project.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro inesperado");

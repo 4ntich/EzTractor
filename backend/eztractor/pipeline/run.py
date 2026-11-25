@@ -7,9 +7,10 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from .. import credits, storage
+from .. import storage
+from ..config import get_settings
 from ..db import session_factory
-from ..models import PLAN_LIMITS, Clip, Project, ProjectStatus
+from ..models import Clip, Project, ProjectStatus
 from . import candidates as cand_mod
 from . import ranker, signals
 from .captions import build_ass, write_ass
@@ -19,7 +20,6 @@ from .render import RenderSpec, render_clip
 from .transcribe import transcribe
 
 log = logging.getLogger(__name__)
-WATERMARK = "feito com EzTractor"
 
 
 def _update(db: Session, project: Project, *, stage: str | None = None, progress: int | None = None, **kw) -> None:
@@ -38,16 +38,14 @@ def _source_path(project: Project) -> Path:
 
 
 def _render(db: Session, project: Project, clip: Clip, workdir: Path) -> None:
-    limits = PLAN_LIMITS[project.user.plan]
     st = project.settings or {}
     spec = RenderSpec(
-        start=clip.start_s, end=clip.end_s, height=limits["render_height"],
+        start=clip.start_s, end=clip.end_s, height=get_settings().render_height,
         layout=st.get("layout", "crop"), facecam=st.get("facecam"),
     )
     ass = build_ass(
         project.transcript or [], clip.start_s, clip.end_s, spec.width, spec.height,
-        hook=clip.hook, watermark=WATERMARK if limits["watermark"] else None,
-        captions=st.get("captions", True),
+        hook=clip.hook, captions=st.get("captions", True),
     )
     spec.ass_path = write_ass(workdir / f"{clip.id}.ass", ass)
 
@@ -81,19 +79,13 @@ def process_project(project_id: str) -> None:
             project.source_key = key
         src = _source_path(project)
         info = probe(src)
-        limits = PLAN_LIMITS[project.user.plan]
-        if info.duration_s > limits["max_video_minutes"] * 60:
-            raise ValueError(f"vídeo excede o limite do plano ({limits['max_video_minutes']} min)")
+        max_min = get_settings().max_video_minutes
+        if info.duration_s > max_min * 60:
+            raise ValueError(f"vídeo maior que o limite configurado ({max_min} min, EZT_MAX_VIDEO_MINUTES)")
         project.duration_s, project.width, project.height = info.duration_s, info.width, info.height
-
-        # 2) Cobrança (uma única vez por projeto)
-        if project.credits_charged == 0:
-            cost = credits.cost_for_duration(info.duration_s)
-            credits.charge(db, project.user_id, cost, project.id)
-            project.credits_charged = cost
         _update(db, project, stage="transcribe", progress=15)
 
-        # 3) Áudio + transcrição
+        # 2) Áudio + transcrição
         wav = None
         words: list[dict] = []
         if info.has_audio:
@@ -104,7 +96,7 @@ def process_project(project_id: str) -> None:
                 st = project.settings
         _update(db, project, stage="analyze", progress=45, transcript=words)
 
-        # 4) Sinais + candidatos + ranking
+        # 3) Sinais + candidatos + ranking
         sig = signals.compute(src, wav, info.duration_s, words)
         max_clips = int(st.get("max_clips", 8))
         min_s, max_s = int(st.get("clip_min_s", 15)), int(st.get("clip_max_s", 45))
@@ -124,7 +116,7 @@ def process_project(project_id: str) -> None:
             clips.append(clip)
         _update(db, project, stage="render", progress=70)
 
-        # 5) Render
+        # 4) Render
         for i, clip in enumerate(clips):
             try:
                 _render(db, project, clip, workdir)
@@ -140,9 +132,6 @@ def process_project(project_id: str) -> None:
         db.rollback()
         project = db.get(Project, project_id)
         if project is not None:
-            if project.credits_charged:
-                credits.grant(db, project.user_id, project.credits_charged, "refund", project.id)
-                project.credits_charged = 0
             project.status = ProjectStatus.failed.value
             project.error = str(e)[:2000]
             db.commit()

@@ -20,13 +20,14 @@ def sample_video(tmp_path_factory) -> Path:
     return out
 
 
-@pytest.fixture()
-def client(tmp_path, monkeypatch):
+def _make_client(tmp_path, monkeypatch, password: str = ""):
     monkeypatch.setenv("EZT_DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
     monkeypatch.setenv("EZT_STORAGE_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("EZT_QUEUE_MODE", "sync")
     monkeypatch.setenv("EZT_TRANSCRIBER", "none")
     monkeypatch.setenv("EZT_RANKER", "heuristic")
+    monkeypatch.setenv("EZT_RENDER_HEIGHT", "1280")
+    monkeypatch.setenv("EZT_APP_PASSWORD", password)
 
     from eztractor import config, db
 
@@ -34,14 +35,24 @@ def client(tmp_path, monkeypatch):
     db.reset_engine()
     from eztractor.api.main import create_app
 
-    with TestClient(create_app()) as c:
+    return TestClient(create_app())
+
+
+@pytest.fixture()
+def client(tmp_path, monkeypatch):
+    from eztractor import config, db
+
+    with _make_client(tmp_path, monkeypatch) as c:
         yield c
     db.reset_engine()
     config.get_settings.cache_clear()
 
 
 @pytest.fixture()
-def auth(client) -> dict:
-    r = client.post("/auth/register", json={"email": "gamer@example.com", "password": "senha-forte-123"})
-    assert r.status_code == 201, r.text
-    return {"Authorization": f"Bearer {r.json()['token']}"}
+def locked_client(tmp_path, monkeypatch):
+    from eztractor import config, db
+
+    with _make_client(tmp_path, monkeypatch, password="minha-senha") as c:
+        yield c
+    db.reset_engine()
+    config.get_settings.cache_clear()

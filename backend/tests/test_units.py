@@ -1,25 +1,10 @@
 import numpy as np
 
-from eztractor.auth import hash_password, verify_password
-from eztractor.credits import cost_for_duration
 from eztractor.pipeline.candidates import generate, snap_to_words
 from eztractor.pipeline.captions import build_ass, chunk_words
 from eztractor.pipeline.ranker import heuristic_rank
 from eztractor.pipeline.render import RenderSpec, build_filter
 from eztractor.pipeline.signals import Signals, word_counts
-
-
-def test_password_roundtrip():
-    h = hash_password("abc12345")
-    assert verify_password("abc12345", h)
-    assert not verify_password("errada", h)
-
-
-def test_cost():
-    assert cost_for_duration(10) == 1
-    assert cost_for_duration(60) == 1
-    assert cost_for_duration(61) == 2
-    assert cost_for_duration(3600) == 60
 
 
 def test_word_counts_detects_hype_and_multiword():

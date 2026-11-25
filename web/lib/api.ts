@@ -1,7 +1,5 @@
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-export type Me = { id: string; email: string; name: string; plan: string; credits: number };
-
 export type Clip = {
   id: string;
   start_s: number;
@@ -37,7 +35,6 @@ export type Project = {
   progress: number;
   error: string | null;
   settings: ProjectSettings;
-  credits_charged: number;
   created_at: string;
   clips: Clip[];
 };
