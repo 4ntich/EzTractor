@@ -67,13 +67,15 @@ def extract(video_path: Path, scene_threshold: float = 0.35) -> Visual:
         proc = run(["ffmpeg", "-hide_banner", "-nostats", "-y", "-i", str(video_path), "-an", "-sn",
                     "-filter_complex",
                     f"[0:v]scale=160:-2,split=2[a][b];"
-                    f"[a]select='gt(scene,{scene_threshold})',showinfo[s];"
+                    # eq(n,0): a saída de cenas sempre recebe o 1º quadro (descartado abaixo); sem isso, num vídeo
+                    # sem troca de cena ela fica vazia e o ffmpeg mais novo (Windows) falha com "Nothing was written"
+                    f"[a]select='eq(n\\,0)+gt(scene\\,{scene_threshold})',showinfo[s];"
                     f"[b]fps={FPS},scale={W}:{H}:flags=area,format=gray[g]",
                     "-map", "[s]", "-f", "null", "-",
                     "-map", "[g]", "-f", "rawvideo", str(raw)])
         data = np.fromfile(raw, dtype=np.uint8)
     n = data.size // (W * H)
-    scenes = [float(m) for m in re.findall(r"pts_time:([0-9.]+)", proc.stderr)]
+    scenes = [float(m) for m in re.findall(r"pts_time:([0-9.]+)", proc.stderr)][1:]  # [0] = 1º quadro (não é corte)
     return Visual(data[: n * W * H].reshape(n, H, W), scene_times=scenes)
 
 
