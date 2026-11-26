@@ -347,10 +347,28 @@ export default function TemplatesPage() {
       </section>
 
       {/* ------------------------------------------------ editor */}
-      <section id="editor" className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
+      <section id="editor" className="space-y-4">
+        <div className="card flex flex-wrap items-end gap-3 p-4">
+          <div className="min-w-[180px] flex-1">
+            <label className="label" htmlFor="tpl-name">{editingId ? "Editando" : "Novo template"}</label>
+            <input id="tpl-name" className="input" maxLength={60} value={name}
+              onChange={(e) => { setName(e.target.value); setDirty(true); }} />
+          </div>
+          <div className="pb-2">
+            <Toggle label="Padrão em projetos novos" checked={isDefault} onChange={(v) => { setIsDefault(v); setDirty(true); }} />
+          </div>
+          <div className="flex gap-2">
+            {editingId && <button className="btn" onClick={() => save(false)} disabled={!name.trim()}>Salvar</button>}
+            <button className={editingId ? "btn-ghost" : "btn"} onClick={() => save(true)} disabled={!name.trim()}>
+              {editingId ? "Salvar como novo" : "Salvar na biblioteca"}
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
         {/* palco único */}
-        <div className="lg:sticky lg:top-20 lg:self-start">
-          <div className="card space-y-3 p-3">
+        <div className="lg:sticky lg:top-20 lg:self-start" data-testid="stage-col">
+          <div className="card space-y-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Choice value={view} onChange={setView}
                 options={[{ value: "editar", label: "✏️ Editar" }, { value: "real", label: "🎬 Como vai ficar" }]} />
@@ -423,34 +441,15 @@ export default function TemplatesPage() {
           </div>
         </div>
 
-        {/* painel */}
-        <div className="space-y-4">
-          <div className="card flex flex-wrap items-end gap-3 p-4">
-            <div className="min-w-[180px] flex-1">
-              <label className="label" htmlFor="tpl-name">{editingId ? "Editando" : "Novo template"}</label>
-              <input id="tpl-name" className="input" maxLength={60} value={name}
-                onChange={(e) => { setName(e.target.value); setDirty(true); }} />
-            </div>
-            <div className="pb-2">
-              <Toggle label="Padrão em projetos novos" checked={isDefault} onChange={(v) => { setIsDefault(v); setDirty(true); }} />
-            </div>
-            <div className="flex gap-2">
-              {editingId && <button className="btn" onClick={() => save(false)} disabled={!name.trim()}>Salvar</button>}
-              <button className={editingId ? "btn-ghost" : "btn"} onClick={() => save(true)} disabled={!name.trim()}>
-                {editingId ? "Salvar como novo" : "Salvar na biblioteca"}
-              </button>
-            </div>
-          </div>
-
-          <Tabs value={panel} onChange={setPanel} tabs={[
-            { value: "textos", label: "Textos", icon: "🔤" },
-            { value: "bordas", label: "Bordas", icon: "🖼" },
-            { value: "video", label: "Vídeo", icon: "🎞" },
-            { value: "legendas", label: "Legendas", icon: "💬" },
-            { value: "extras", label: "Extras", icon: "✨" },
-          ]} />
-
-          <div className="card space-y-4 p-4">
+        {/* painel: começa na mesma linha do palco e estica até a altura dele */}
+          <div className="card min-w-0 space-y-4 p-4" data-testid="panel">
+            <Tabs value={panel} onChange={setPanel} tabs={[
+              { value: "textos", label: "Textos", icon: "🔤" },
+              { value: "bordas", label: "Bordas", icon: "🖼" },
+              { value: "video", label: "Vídeo", icon: "🎞" },
+              { value: "legendas", label: "Legendas", icon: "💬" },
+              { value: "extras", label: "Extras", icon: "✨" },
+            ]} />
             {/* ---------------------------------------------- textos */}
             {panel === "textos" && (
               <>
@@ -646,6 +645,9 @@ export default function TemplatesPage() {
             {/* ---------------------------------------------- legendas */}
             {panel === "legendas" && (
               <>
+                <div className="rounded-xl bg-black/10 p-3 ring-1 ring-white/10" data-testid="caption-toggle">
+                  <Toggle label="Mostrar a legenda na prévia" checked={showSampleCap} onChange={setShowSampleCap} />
+                </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <select className="input" value={cfg.captions.fontFamily} aria-label="Fonte da legenda"
                     onChange={(e) => updateCaps({ fontFamily: e.target.value })}>
@@ -669,8 +671,7 @@ export default function TemplatesPage() {
                   </div>
                 </div>
                 <p className="text-[11px] text-zinc-500">
-                  A legenda aparece no vídeo só se estiver ligada no projeto. Para esconder o exemplo da tela, desligue
-                  “Legenda de exemplo” embaixo da prévia.
+                  Esse liga/desliga vale só para a prévia. No vídeo, a legenda aparece se estiver ligada no projeto.
                 </p>
               </>
             )}
