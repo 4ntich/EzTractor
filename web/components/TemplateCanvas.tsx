@@ -157,7 +157,7 @@ export default function TemplateCanvas({
       {/* área segura (onde as interfaces do TikTok/Reels não cobrem) */}
       {interactive && showSafeArea && (
         <div className="pointer-events-none absolute border border-dashed border-white/15"
-          style={{ left: "6%", right: "16%", top: "9%", bottom: "20%" }} title="Área segura" />
+          style={{ left: "8%", right: "8%", top: "9%", bottom: "20%" }} title="Área segura" />
       )}
     </div>
   );
