@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import TemplateCanvas from "@/components/TemplateCanvas";
+import TemplateCanvas, { SafeArea } from "@/components/TemplateCanvas";
 import { Choice, Color, Group, Range, Swatch, Tabs, Toggle } from "@/components/ui";
 import { api, API_URL, getToken, Project } from "@/lib/api";
 import {
@@ -44,7 +44,17 @@ export default function TemplatesPage() {
   // palco único: edição ao vivo ou render real (mesmo motor do vídeo final), no mesmo quadro
   const [view, setView] = useState<View>("editar");
   const [showSampleCap, setShowSampleCap] = useState(true);
-  const [showSafe, setShowSafe] = useState(true);
+  const [safeMode, setSafeMode] = useState<SafeArea>("normal");
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("ezt-safe-area");
+      if (v === "normal" || v === "tiktok" || v === "off") setSafeMode(v);
+    } catch { /* armazenamento indisponível: fica o padrão */ }
+  }, []);
+  const changeSafeMode = (v: SafeArea) => {
+    setSafeMode(v);
+    try { localStorage.setItem("ezt-safe-area", v); } catch { /* ignora */ }
+  };
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -352,7 +362,7 @@ export default function TemplatesPage() {
               {view === "editar" ? (
                 <TemplateCanvas cfg={cfg} families={families} selectedId={selectedId} onSelect={setSelectedId}
                   onMove={(id, x, y) => updateLayer(id, { x, y })} animateKey={animKey}
-                  showCaptions={showSampleCap} showSafeArea={showSafe} />
+                  showCaptions={showSampleCap} safeArea={safeMode} />
               ) : (
                 <div className="relative w-full" style={{ aspectRatio: `${cfg.width} / ${cfg.height}` }}>
                   {previewUrl && (
@@ -381,12 +391,17 @@ export default function TemplatesPage() {
                   <button className="btn-ghost h-8 px-3 text-xs" onClick={() => setAnimKey((k) => k + 1)}>▶ Animações</button>
                   <button className="btn-ghost h-8 px-3 text-xs" onClick={distribute}>Centralizar textos</button>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Toggle label="Legenda de exemplo" checked={showSampleCap} onChange={setShowSampleCap} />
-                  <Toggle label="Área segura" checked={showSafe} onChange={setShowSafe} />
+                <Toggle label="Legenda de exemplo" checked={showSampleCap} onChange={setShowSampleCap} />
+                <div className="flex flex-wrap items-center justify-between gap-2" data-testid="safe-mode">
+                  <span className="text-xs text-zinc-300">Área segura</span>
+                  <Choice value={safeMode} onChange={changeSafeMode}
+                    options={[{ value: "normal", label: "Normal" }, { value: "tiktok", label: "TikTok/Reels" }, { value: "off", label: "Desligada" }]} />
                 </div>
                 <p className="text-[11px] leading-relaxed text-zinc-500">
-                  Arraste os textos na tela. {showSafe && "O tracejado é a área segura: fora dela os botões do TikTok/Reels podem cobrir."}
+                  Arraste os textos na tela.{" "}
+                  {safeMode === "tiktok"
+                    ? "O tracejado mostra onde os botões e a legenda do TikTok/Reels não cobrem (direita e embaixo ficam ocupados)."
+                    : safeMode === "normal" ? "O tracejado é uma margem igual em todos os lados." : ""}
                 </p>
               </>
             ) : (

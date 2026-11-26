@@ -15,15 +15,22 @@ type Props = {
   onMove?: (id: string, x: number, y: number) => void;
   animateKey?: number; // muda => reinicia as animações
   showCaptions?: boolean;
-  showSafeArea?: boolean;
+  safeArea?: SafeArea;
   className?: string;
 };
 
 const SNAP = 1.5; // % de distância para "grudar" no centro
 
+export type SafeArea = "off" | "normal" | "tiktok";
+// TikTok/Reels: coluna de botões à direita e legenda/descrição embaixo cobrem mais espaço
+const SAFE_AREAS: Record<Exclude<SafeArea, "off">, React.CSSProperties> = {
+  normal: { left: "8%", right: "8%", top: "9%", bottom: "9%" },
+  tiktok: { left: "6%", right: "16%", top: "9%", bottom: "20%" },
+};
+
 export default function TemplateCanvas({
   cfg, families, background = "/sample-gameplay.jpg", selectedId, onSelect, onMove, animateKey = 0,
-  showCaptions = true, showSafeArea = true, className = "",
+  showCaptions = true, safeArea = "normal", className = "",
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: string; sx: number; sy: number; lx: number; ly: number } | null>(null);
@@ -154,10 +161,10 @@ export default function TemplateCanvas({
 
       {guides.v && <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-fuchsia-400" />}
       {guides.h && <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-fuchsia-400" />}
-      {/* área segura (onde as interfaces do TikTok/Reels não cobrem) */}
-      {interactive && showSafeArea && (
+      {/* área segura: "normal" = margens iguais; "tiktok" = onde a interface do TikTok/Reels não cobre */}
+      {interactive && safeArea !== "off" && (
         <div className="pointer-events-none absolute border border-dashed border-white/15"
-          style={{ left: "8%", right: "8%", top: "9%", bottom: "20%" }} title="Área segura" />
+          style={SAFE_AREAS[safeArea]} title="Área segura" data-testid={`safe-${safeArea}`} />
       )}
     </div>
   );
