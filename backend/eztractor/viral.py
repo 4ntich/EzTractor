@@ -29,6 +29,36 @@ _cache: dict[tuple, tuple[float, dict]] = {}
 _lock = threading.Lock()
 
 
+_YT_ID = None
+
+
+def youtube_video_id(url: str | None) -> str | None:
+    """ID de 11 caracteres de qualquer link do YouTube (watch?v=, /shorts/, youtu.be/, /live/, /embed/)."""
+    import re
+
+    global _YT_ID
+    if _YT_ID is None:
+        _YT_ID = re.compile(r"(?:[?&]v=|/shorts/|youtu\.be/|/live/|/embed/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])")
+    m = _YT_ID.search(url or "")
+    return m.group(1) if m else None
+
+
+def known_videos(db) -> dict[str, dict]:
+    """Vídeos do YouTube que já têm projeto: {id do vídeo: {id, status, title}} (o mais recente vence)."""
+    from sqlalchemy import select
+
+    from .models import Project
+
+    out: dict[str, dict] = {}
+    rows = db.execute(select(Project.id, Project.title, Project.status, Project.youtube_id, Project.source_url)
+                      .order_by(Project.created_at)).all()
+    for pid, title, status, yid, src in rows:
+        vid = yid or youtube_video_id(src)
+        if vid:
+            out[vid] = {"id": pid, "status": status, "title": title}
+    return out
+
+
 class ViralError(Exception):
     """Erro para mostrar ao usuário (chave inválida, sem internet...)."""
 

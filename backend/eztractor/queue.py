@@ -1,4 +1,6 @@
 import importlib
+import logging
+import queue
 import threading
 
 from .config import get_settings
@@ -26,8 +28,36 @@ def enqueue(func_path: str, *args) -> None:
         raise ValueError(f"queue_mode desconhecido: {mode}")
 
 
+log = logging.getLogger(__name__)
+_projects: "queue.Queue[str] | None" = None
+_projects_lock = threading.Lock()
+
+
+def _project_worker() -> None:
+    run = _resolve("eztractor.pipeline.run.process_project")
+    while True:
+        project_id = _projects.get()
+        try:
+            run(project_id)
+        except Exception:  # process_project já registra o erro no projeto; nunca derruba a fila
+            log.exception("falha ao processar %s", project_id)
+        finally:
+            _projects.task_done()
+
+
 def enqueue_project(project_id: str) -> None:
-    enqueue("eztractor.pipeline.run.process_project", project_id)
+    """No app (modo inline) os projetos são processados UM DE CADA VEZ, na ordem em que entraram:
+    um lote de 20 vídeos não pode rodar 20 transcrições/renders ao mesmo tempo e travar o PC.
+    (Edições de clipe e re-render continuam imediatos, fora desta fila.)"""
+    global _projects
+    if get_settings().queue_mode != "inline":
+        enqueue("eztractor.pipeline.run.process_project", project_id)
+        return
+    with _projects_lock:
+        if _projects is None:
+            _projects = queue.Queue()
+            threading.Thread(target=_project_worker, daemon=True, name="ezt-fila-projetos").start()
+    _projects.put(project_id)
 
 
 def enqueue_render(clip_id: str) -> None:

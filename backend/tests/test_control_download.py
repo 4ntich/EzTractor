@@ -116,18 +116,55 @@ def test_interrupted_projects_are_recovered_on_startup(client):
     from eztractor.db import session_factory
     from eztractor.models import Project
 
+    import eztractor.api.main as main_mod
+
     with session_factory()() as db:
         p = Project(title="x", source_type="upload", status="processing")
-        db.add(p)
+        q = Project(title="na fila", source_type="upload", status="queued")
+        db.add_all([p, q])
         db.commit()
-        pid = p.id
+        pid, qid = p.id, q.id
+    requeued = []
     get_settings().queue_mode = "inline"
+    orig = main_mod.enqueue_project
+    main_mod.enqueue_project = requeued.append
     try:
         recover_interrupted()
     finally:
         get_settings().queue_mode = "sync"
+        main_mod.enqueue_project = orig
     p = client.get(f"/projects/{pid}").json()
     assert p["status"] == "failed" and "Reprocessar" in p["error"]
+    # o que ainda nem tinha começado volta para a fila (ex.: resto de um lote quando o app foi fechado)
+    assert requeued == [qid] and client.get(f"/projects/{qid}").json()["status"] == "queued"
+
+
+def test_projects_run_one_at_a_time_in_order(monkeypatch):
+    """Um lote de vídeos não pode processar tudo junto e travar o PC."""
+    import importlib
+
+    from eztractor import config
+    from eztractor import queue as q
+
+    importlib.reload(q)
+    monkeypatch.setattr(config.get_settings(), "queue_mode", "inline")
+    running, order, peak = [0], [], [0]
+    lock = threading.Lock()
+
+    def fake_process(pid):
+        with lock:
+            running[0] += 1
+            peak[0] = max(peak[0], running[0])
+        time.sleep(0.15)
+        order.append(pid)
+        with lock:
+            running[0] -= 1
+
+    monkeypatch.setattr(q, "_resolve", lambda path: fake_process)
+    for pid in ("a", "b", "c", "d"):
+        q.enqueue_project(pid)
+    q._projects.join()
+    assert order == ["a", "b", "c", "d"] and peak[0] == 1
 
 
 # ---------------------------------------------------------------- só baixar

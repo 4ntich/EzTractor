@@ -64,11 +64,17 @@ def recover_interrupted() -> None:
         return
     from ..db import session_factory
 
+    waiting = []
     with session_factory()() as db:
-        for p in db.scalars(select(Project).where(Project.status.in_(ACTIVE_STATUSES))):
+        for p in db.scalars(select(Project).where(Project.status.in_(ACTIVE_STATUSES)).order_by(Project.created_at)):
+            if p.status == ProjectStatus.queued.value and p.control != "cancel":
+                waiting.append(p.id)  # ainda nem tinha começado: volta para a fila
+                continue
             p.status, p.control = ProjectStatus.failed.value, "run"
             p.error = "Interrompido: o EzTractor foi fechado durante o processamento. Clique em Reprocessar."
         db.commit()
+    for pid in waiting:
+        enqueue_project(pid)
 
 
 # ---------- arquivos (URLs assinadas, pois <video> não envia header Authorization)

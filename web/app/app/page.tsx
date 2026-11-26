@@ -25,6 +25,12 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, [projects, load]);
 
+  // posição na fila (os projetos são processados um de cada vez, do mais antigo para o mais novo)
+  const queuePos: Record<string, number> = {};
+  (projects ?? []).filter((p) => p.status === "queued")
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+    .forEach((p, i) => { queuePos[p.id] = i + 1; });
+
   return (
     <div className="space-y-10">
       <section>
@@ -47,6 +53,7 @@ export default function Dashboard() {
                   <div className="min-w-0">
                     <p className="truncate font-medium">
                       {p.settings?.mode === "download" && <span className="mr-2 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-300">DOWNLOAD</span>}
+                      {p.settings?.batch && <span className="mr-2 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-300">🔥 {p.settings.batch}</span>}
                       {p.title}
                     </p>
                     <p className="text-xs text-zinc-500">
@@ -54,7 +61,10 @@ export default function Dashboard() {
                       {p.duration_s ? ` · ${fmtTime(p.duration_s)}` : ""}
                     </p>
                   </div>
-                  <StatusBadge p={p} />
+                  <span className="flex items-center gap-2">
+                    {queuePos[p.id] && <span className="text-xs text-zinc-500">{queuePos[p.id] === 1 ? "próximo" : `${queuePos[p.id]}º na fila`}</span>}
+                    <StatusBadge p={p} />
+                  </span>
                 </Link>
               </li>
             ))}

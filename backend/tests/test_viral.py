@@ -216,3 +216,66 @@ def test_phone_cannot_change_the_key(desktop_client):
     h = {"Authorization": f"Bearer {tok}"}
     assert phone.post("/system/youtube", json={"key": "chave-boa-00000000000000000000"}, headers=h).status_code == 403
     assert phone.delete("/system/youtube", headers=h).status_code == 403
+
+
+# ---------------------------------------------------------------- lote e vídeos repetidos
+def test_youtube_video_id_from_any_link():
+    from eztractor.viral import youtube_video_id
+
+    for url in ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", "https://youtube.com/watch?feature=x&v=dQw4w9WgXcQ&t=3",
+                "https://www.youtube.com/shorts/dQw4w9WgXcQ", "https://youtu.be/dQw4w9WgXcQ?si=abc",
+                "https://www.youtube.com/live/dQw4w9WgXcQ", "https://m.youtube.com/watch?v=dQw4w9WgXcQ"):
+        assert youtube_video_id(url) == "dQw4w9WgXcQ", url
+    assert youtube_video_id("https://www.twitch.tv/videos/123") is None
+    assert youtube_video_id(None) is None
+
+
+def test_batch_creates_projects_and_skips_already_cut(client, fake_api, monkeypatch):
+    from eztractor import queue as q
+    from eztractor.db import session_factory
+    from eztractor.models import Project
+
+    queued = []
+    monkeypatch.setattr(q, "enqueue", lambda path, *a: queued.append(a[0]))  # não processa de verdade
+    with session_factory()() as db:  # "aaa" já foi cortado antes (link em outro formato)
+        db.add(Project(title="velho", source_type="url", source_url="https://youtu.be/aaaaaaaaaaa", status="ready"))
+        db.commit()
+    _set_key(monkeypatch, "chave-boa-00000000000000000000")
+
+    body = {"batch": "Virais: free fire", "settings": {"max_clips": 3, "render_height": 1280},
+            "items": [{"url": "https://www.youtube.com/shorts/aaaaaaaaaaa", "title": "Já cortado"},
+                      {"url": "https://www.youtube.com/shorts/bbbbbbbbbbb", "title": "Novo 1"},
+                      {"url": "https://www.youtube.com/watch?v=bbbbbbbbbbb", "title": "Novo 1 de novo"},
+                      {"url": "https://www.youtube.com/shorts/ccccccccccc", "title": "Novo 2"},
+                      {"url": "ftp://errado", "title": "x"}]}
+    r = client.post("/projects/batch", json=body)
+    assert r.status_code == 201, r.text
+    out = r.json()
+    assert [p["title"] for p in out["created"]] == ["Novo 1", "Novo 2"]
+    assert all(p["status"] == "queued" and p["settings"]["batch"] == "Virais: free fire"
+               and p["settings"]["max_clips"] == 3 for p in out["created"])
+    reasons = {s["url"]: s["reason"] for s in out["skipped"]}
+    assert reasons["https://www.youtube.com/shorts/aaaaaaaaaaa"] == "já tem projeto"
+    assert reasons["https://www.youtube.com/watch?v=bbbbbbbbbbb"] == "repetido na lista"
+    assert reasons["ftp://errado"] == "link inválido"
+    assert queued == [p["id"] for p in out["created"]]  # entram na fila na ordem
+
+    # se o usuário marcar de novo de propósito, cria mesmo assim
+    again = client.post("/projects/batch", json={"items": [
+        {"url": "https://www.youtube.com/shorts/aaaaaaaaaaa", "allow_duplicate": True}]}).json()
+    assert len(again["created"]) == 1 and not again["skipped"]
+
+
+def test_search_marks_videos_that_already_have_a_project(client, fake_api, monkeypatch):
+    from eztractor.db import session_factory
+    from eztractor.models import Project
+
+    _set_key(monkeypatch, "chave-boa-00000000000000000000")
+    with session_factory()() as db:
+        db.add(Project(title="feito", source_type="url", source_url="https://www.youtube.com/watch?v=x", youtube_id="bbb",
+                       status="ready"))
+        db.commit()
+    res = client.get("/viral/search", params={"q": "capa", "kind": "shorts"}).json()
+    marks = {r["id"]: r["project"] for r in res["results"]}
+    assert marks["bbb"]["title"] == "feito" and marks["bbb"]["status"] == "ready"
+    assert marks["aaa"] is None

@@ -76,6 +76,7 @@ export type ProjectSettings = {
   download_height?: number;
   render_height?: number | null;
   analysis?: Analysis; // preenchido pelo processamento
+  batch?: string; // lote de origem (ex.: "Virais: free fire capa")
 };
 
 /** Como os cortes foram escolhidos (quais sinais foram usados e o que foi pulado). */
@@ -241,5 +242,6 @@ export type ViralItem = {
   duration_s: number | null;
   is_short: boolean;
   thumbnail: string;
+  project?: { id: string; status: string; title: string } | null; // já tem projeto com este vídeo
 };
 export type ViralResult = { source: "api" | "ytdlp"; notice: string | null; results: ViralItem[]; cached: boolean };

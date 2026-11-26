@@ -6,11 +6,14 @@ de tamanho por arquivo na versão gratuita).
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from .. import system, updater
 from ..auth import is_local, require_auth
 from ..config import get_settings
+from ..db import get_db
+from ..schemas import ProjectSettings
 
 sys_api = APIRouter(dependencies=[Depends(require_auth)])
 
@@ -100,13 +103,67 @@ def disconnect_devices(request: Request):
 # ---------- descobrir virais no YouTube
 @sys_api.get("/viral/search")
 def viral_search(q: str, period: str = "week", kind: str = "shorts", sort: str = "trending",
-                 region: str | None = "BR", limit: int = 25):
+                 region: str | None = "BR", limit: int = 25, db: Session = Depends(get_db)):
     from .. import viral
 
     try:
-        return viral.search(q, period=period, kind=kind, sort=sort, region=region or None, limit=limit)
+        res = viral.search(q, period=period, kind=kind, sort=sort, region=region or None, limit=limit)
     except viral.ViralError as e:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from None
+    known = viral.known_videos(db)  # marca na hora (o resultado da busca fica em cache)
+    return {**res, "results": [{**r, "project": known.get(r["id"])} for r in res["results"]]}
+
+
+class BatchItem(BaseModel):
+    url: str
+    title: str = Field("", max_length=255)
+    allow_duplicate: bool = False  # o usuário marcou de novo um vídeo que já tem projeto
+
+
+class BatchIn(BaseModel):
+    items: list[BatchItem] = Field(min_length=1, max_length=50)
+    settings: ProjectSettings = ProjectSettings()
+    batch: str = Field("", max_length=80)  # rótulo do lote (ex.: "Virais: free fire capa")
+
+
+@sys_api.post("/projects/batch", status_code=201)
+def create_batch(body: BatchIn, db: Session = Depends(get_db)):
+    """Cria um projeto de cortes para cada vídeo; vídeos que já têm projeto (ou repetidos) são pulados.
+    Os projetos entram na fila e são processados um de cada vez."""
+    from .. import viral
+    from ..models import Project
+    from ..queue import enqueue_project
+    from ..schemas import ProjectFromUrlIn
+    from .main import project_out, resolve_settings
+
+    settings = resolve_settings(db, body.settings)
+    if body.batch.strip():
+        settings = {**settings, "batch": body.batch.strip()}
+    known = viral.known_videos(db)
+    seen: set[str] = set()
+    created, skipped = [], []
+    for it in body.items:
+        try:
+            url = ProjectFromUrlIn(url=it.url).url
+        except ValueError:
+            skipped.append({"url": it.url, "reason": "link inválido"})
+            continue
+        vid = viral.youtube_video_id(url)
+        key = vid or url
+        if key in seen:
+            skipped.append({"url": url, "reason": "repetido na lista"})
+            continue
+        seen.add(key)
+        if vid in known and not it.allow_duplicate:
+            skipped.append({"url": url, "reason": "já tem projeto", "project_id": known[vid]["id"]})
+            continue
+        p = Project(title=(it.title or url)[:255], source_type="url", source_url=url, settings=dict(settings))
+        db.add(p)
+        created.append(p)
+    db.commit()
+    for p in created:
+        enqueue_project(p.id)
+    return {"created": [project_out(db.merge(p)) for p in created], "skipped": skipped}
 
 
 @sys_api.get("/system/youtube")

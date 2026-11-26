@@ -3,8 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { Choice } from "@/components/ui";
-import { api, copyText, SystemInfo, ViralItem, ViralResult } from "@/lib/api";
+import { Choice, Range, Toggle } from "@/components/ui";
+import { api, Capabilities, copyText, Project, RENDER_QUALITIES, SystemInfo, ViralItem, ViralResult } from "@/lib/api";
+import type { Template } from "@/lib/templates";
 
 type Period = "today" | "week" | "month" | "year" | "any";
 type Kind = "shorts" | "videos" | "any";
@@ -38,6 +39,8 @@ export default function ViraisPage() {
   const [res, setRes] = useState<ViralResult | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [setup, setSetup] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchOpen, setBatchOpen] = useState(false);
 
   useEffect(() => {
     api<SystemInfo>("/system/info").then(setSys).catch(() => {});
@@ -55,7 +58,10 @@ export default function ViraisPage() {
     setError(null);
     try {
       const p = new URLSearchParams({ q, period, kind, sort, region, limit: String(limit) });
-      setRes(await api<ViralResult>(`/viral/search?${p}`));
+      const r = await api<ViralResult>(`/viral/search?${p}`);
+      setRes(r);
+      setSelected(new Set(r.results.filter((x) => !x.project).map((x) => x.id)));
+      setBatchOpen(false);
       try { localStorage.setItem(LS, JSON.stringify({ q, period, kind, sort, region })); } catch { /* ignora */ }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro na busca");
@@ -129,6 +135,26 @@ export default function ViraisPage() {
           {res.notice && (
             <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-200 ring-1 ring-amber-400/30">{res.notice}</p>
           )}
+          {res.results.length > 0 && (
+            <div className="card flex flex-wrap items-center gap-2 px-4 py-3" data-testid="batch-bar">
+              <span className="text-sm text-zinc-200"><b>{selected.size}</b> de {res.results.length} selecionado(s)</span>
+              {res.results.some((r) => r.project) && (
+                <span className="text-xs text-zinc-500">
+                  · {res.results.filter((r) => r.project).length} já cortado(s) foram desmarcados
+                </span>
+              )}
+              <div className="ml-auto flex flex-wrap gap-2">
+                <button className="btn-ghost h-9 px-3 text-xs" onClick={() => setSelected(new Set(res.results.map((r) => r.id)))}>Marcar todos</button>
+                <button className="btn-ghost h-9 px-3 text-xs" onClick={() => setSelected(new Set())}>Desmarcar todos</button>
+                <button className="btn h-9 px-3 text-xs" disabled={!selected.size} onClick={() => setBatchOpen((v) => !v)}
+                  data-testid="batch-open">✂ Gerar cortes de {selected.size} vídeo(s)</button>
+              </div>
+            </div>
+          )}
+          {batchOpen && (
+            <BatchPanel items={res.results.filter((r) => selected.has(r.id))} query={q}
+              onDone={() => router.push("/app")} onClose={() => setBatchOpen(false)} />
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm text-zinc-400">
               {res.results.length} resultado(s) · {numbers ? (sort === "trending" ? "ordenados pelo que mais está viralizando (visualizações por dia)" : sort === "views" ? "ordenados por visualizações" : "ordenados por engajamento") : "ordem de mais vistos do YouTube"}
@@ -146,6 +172,8 @@ export default function ViraisPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {res.results.map((v, i) => (
                 <Result key={v.id} v={v} rank={i + 1} numbers={numbers} copied={copied === v.id}
+                  checked={selected.has(v.id)}
+                  onToggle={() => setSelected((old) => { const n = new Set(old); if (n.has(v.id)) n.delete(v.id); else n.add(v.id); return n; })}
                   onCopy={() => copy(v.url, v.id)} onCut={() => router.push(`/app?url=${encodeURIComponent(v.url)}`)} />
               ))}
             </div>
@@ -156,16 +184,24 @@ export default function ViraisPage() {
   );
 }
 
-function Result({ v, rank, numbers, copied, onCopy, onCut }: {
-  v: ViralItem; rank: number; numbers: boolean; copied: boolean; onCopy: () => void; onCut: () => void;
+function Result({ v, rank, numbers, copied, checked, onToggle, onCopy, onCut }: {
+  v: ViralItem; rank: number; numbers: boolean; copied: boolean; checked: boolean; onToggle: () => void;
+  onCopy: () => void; onCut: () => void;
 }) {
   return (
-    <article className="card flex flex-col overflow-hidden" data-testid="viral-item">
-      <a href={v.url} target="_blank" rel="noreferrer" className="relative block aspect-video bg-black">
+    <article className={`card flex flex-col overflow-hidden transition ${checked ? "ring-2 ring-[rgb(var(--a-400)/.7)]" : "opacity-80"}`}
+      data-testid="viral-item">
+      <a href={v.url} target="_blank" rel="noreferrer" className="relative block aspect-video bg-black"
+        onClick={(e) => { if ((e.target as HTMLElement).closest("label")) e.preventDefault(); }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={v.thumbnail} alt="" loading="lazy" className="h-full w-full object-cover"
           onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
-        <span className="absolute left-2 top-2 rounded-full bg-black/75 px-2 py-0.5 text-xs font-bold text-onvideo">#{rank}</span>
+        <label className="absolute left-2 top-2 flex cursor-pointer items-center gap-1.5 rounded-full bg-black/75 py-1 pl-1.5 pr-2.5 text-xs font-bold text-onvideo"
+          onClick={(e) => e.stopPropagation()} title={checked ? "Desmarcar (não gerar cortes deste)" : "Marcar para gerar cortes"}>
+          <input type="checkbox" className="h-4 w-4" style={{ accentColor: "rgb(var(--a-500))" }} checked={checked}
+            onChange={onToggle} data-testid="viral-check" aria-label={`Selecionar ${v.title}`} />
+          #{rank}
+        </label>
         {v.is_short && <span className="absolute right-2 top-2 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-onvideo">SHORT</span>}
         {v.duration_s != null && (
           <span className="absolute bottom-2 right-2 rounded bg-black/80 px-1.5 py-0.5 font-mono text-[11px] text-onvideo">{dur(v.duration_s)}</span>
@@ -174,6 +210,10 @@ function Result({ v, rank, numbers, copied, onCopy, onCut }: {
       <div className="flex flex-1 flex-col gap-1.5 p-3">
         <h3 className="line-clamp-2 text-sm font-semibold leading-snug" title={v.title}>{v.title}</h3>
         {v.channel && <p className="truncate text-xs text-zinc-400">{v.channel}</p>}
+        {v.project && (
+          <a href={`/app/project/?id=${v.project.id}`} className="w-fit rounded-md bg-emerald-500/15 px-2 py-0.5 text-[11px] text-emerald-300 ring-1 ring-emerald-400/30 hover:underline"
+            data-testid="already-cut">✓ Já cortado · ver projeto</a>
+        )}
         {numbers && (
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-300">
             {v.views != null && <span title="Visualizações">👁 {compact(v.views)}</span>}
@@ -276,5 +316,108 @@ function KeyCard({ hasKey, isLocal, open, onOpen, onChange }: {
       )}
       {msg && <p className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-danger"}`}>{msg.text}</p>}
     </section>
+  );
+}
+
+/** Configurações do lote: um projeto de cortes para cada vídeo selecionado (processados um de cada vez). */
+function BatchPanel({ items, query, onDone, onClose }: {
+  items: ViralItem[]; query: string; onDone: () => void; onClose: () => void;
+}) {
+  const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [maxClips, setMaxClips] = useState(3);
+  const [minS, setMinS] = useState(15);
+  const [maxS, setMaxS] = useState(45);
+  const [templateId, setTemplateId] = useState("");
+  const [height, setHeight] = useState(1920);
+  const [ranker, setRanker] = useState<string>("heuristic");
+  const [captions, setCaptions] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const dupes = items.filter((i) => i.project).length;
+
+  useEffect(() => {
+    api<Capabilities>("/capabilities").then((c) => { setCaps(c); setRanker(c.default_ranker); setHeight(c.default_render_height); }).catch(() => {});
+    api<Template[]>("/templates").then((ts) => {
+      setTemplates(ts);
+      const def = ts.find((t) => t.is_default);
+      if (def) setTemplateId(def.id);
+    }).catch(() => {});
+  }, []);
+
+  async function create() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const r = await api<{ created: Project[]; skipped: { url: string; reason: string }[] }>("/projects/batch", {
+        method: "POST",
+        body: JSON.stringify({
+          batch: `Virais: ${query}`.slice(0, 80),
+          items: items.map((i) => ({ url: i.url, title: i.title, allow_duplicate: Boolean(i.project) })),
+          settings: { max_clips: maxClips, clip_min_s: minS, clip_max_s: Math.max(maxS, minS + 5), template_id: templateId || null,
+            render_height: height, ranker, captions },
+        }),
+      });
+      setMsg({ ok: true, text: `${r.created.length} projeto(s) na fila${r.skipped.length ? `, ${r.skipped.length} pulado(s) (já cortados ou repetidos)` : ""}. Eles são processados um de cada vez.` });
+      setTimeout(onDone, 1800);
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : "Erro ao criar os projetos" });
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card space-y-4 p-5" data-testid="batch-panel">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-white">Gerar cortes de {items.length} vídeo(s)</h2>
+          <p className="text-xs text-zinc-400">
+            Cria um projeto para cada vídeo, todos com estas configurações. Eles entram na fila e são processados um de
+            cada vez, para não travar o PC.
+          </p>
+        </div>
+        <button className="btn-ghost h-8 px-3 text-xs" onClick={onClose} aria-label="Fechar">✕</button>
+      </div>
+      {dupes > 0 && (
+        <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-200 ring-1 ring-amber-400/30">
+          {dupes} vídeo(s) marcado(s) já têm projeto e serão cortados de novo, porque você marcou de novo.
+        </p>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Range label="Clipes por vídeo" value={maxClips} min={1} max={10} onChange={setMaxClips} />
+        <div className="grid grid-cols-2 gap-3">
+          <Range label="Duração mín." value={minS} min={5} max={60} onChange={setMinS} suffix="s" />
+          <Range label="Duração máx." value={maxS} min={10} max={120} onChange={setMaxS} suffix="s" />
+        </div>
+        <label className="text-xs text-zinc-400">Template
+          <select className="input mt-1" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+            <option value="">Sem template (estilo simples)</option>
+            {templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.is_default ? " (padrão)" : ""}</option>)}
+          </select>
+        </label>
+        <label className="text-xs text-zinc-400">Qualidade do vídeo final
+          <select className="input mt-1" value={height} onChange={(e) => setHeight(Number(e.target.value))}>
+            {RENDER_QUALITIES.map((q) => <option key={q.value} value={q.value}>{q.label}</option>)}
+          </select>
+        </label>
+        <label className="text-xs text-zinc-400">Análise
+          <select className="input mt-1" value={ranker} onChange={(e) => setRanker(e.target.value)}>
+            <option value="heuristic">Sinais (grátis)</option>
+            <option value="ollama" disabled={caps ? !caps.ollama.online : false}>IA local, Ollama (grátis)</option>
+            <option value="claude" disabled={caps ? !caps.claude_configured : false}>Claude (pago)</option>
+          </select>
+        </label>
+        <div className="flex items-end pb-2">
+          <Toggle label="Legendas automáticas" checked={captions} onChange={setCaptions} />
+        </div>
+      </div>
+      {msg && <p className={`rounded-lg px-3 py-2 text-sm ${msg.ok ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-danger"}`}>{msg.text}</p>}
+      <div className="flex justify-end gap-2">
+        <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+        <button className="btn" onClick={create} disabled={busy || !items.length} data-testid="batch-create">
+          {busy ? "Criando…" : `Criar ${items.length} projeto(s)`}
+        </button>
+      </div>
+    </div>
   );
 }
