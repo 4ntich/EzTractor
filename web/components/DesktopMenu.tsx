@@ -68,10 +68,10 @@ export default function DesktopMenu() {
     <div className="relative" ref={ref}>
       <button type="button" className="btn-ghost h-9 px-3 text-sm" aria-haspopup="menu" aria-expanded={open}
         onClick={() => setOpen((o) => !o)} disabled={checking} data-testid="desktop-menu">
-        {checking ? "Verificando…" : "Menu ⌄"}
+        {checking ? "Verificando…" : "Menu"}
       </button>
       {open && (
-        <ul role="menu" className="card ezt-rise absolute right-0 z-50 mt-2 w-56 p-1.5">
+        <ul role="menu" className="card menu-pop ezt-rise absolute right-0 z-50 mt-2 w-56 p-1.5">
           {items.map(([label, fn]) => (
             <li key={label}>
               <button role="menuitem" className="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-200 transition hover:bg-white/10"

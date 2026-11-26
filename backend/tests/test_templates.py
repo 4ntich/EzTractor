@@ -132,6 +132,18 @@ def test_every_preset_renders(preset, tmp_path, sample_video):
     assert out.exists() and out.stat().st_size > 5000
 
 
+@pytest.mark.parametrize("fit", ["cover", "blur", "contain"])
+@pytest.mark.parametrize("zoom", [50, 99, 100, 160])
+def test_any_zoom_renders(fit, zoom, tmp_path, sample_video):
+    """Zoom abaixo de 100% no modo 'Preencher' quebrava o ffmpeg (crop maior que o vídeo)."""
+    from eztractor.pipeline.template_render import render_preview
+
+    cfg = _cfg(fitMode=fit, videoZoom=zoom)
+    out = render_preview(cfg, tmp_path / "p.jpg", tmp_path, src=sample_video, at_s=2,
+                         src_w=1280, src_h=720, max_side=640)
+    assert out.exists() and out.stat().st_size > 3000
+
+
 # ---------------------------------------------------------------- API
 def test_template_crud_default_and_options(client):
     opts = client.get("/template-options").json()

@@ -15,13 +15,15 @@ const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 type Panel = "textos" | "bordas" | "video" | "legendas" | "extras";
 type View = "editar" | "real";
 
-// estilos rápidos de borda: quais lados ligar e com que tamanho
+const EDGE_MIN_PX = 2; // 0,1% de 1920 px: o menor tamanho que o servidor aceita
+
+// estilos rápidos de borda: quais lados ligar e com que espessura (px do template)
 const BORDER_STYLES: { key: string; label: string; edges: Partial<Record<EdgeKey, number>> }[] = [
   { key: "none", label: "Nenhuma", edges: {} },
-  { key: "tarjas", label: "Tarjas", edges: { top: 12, bottom: 12 } },
-  { key: "topo", label: "Só topo", edges: { top: 10 } },
-  { key: "laterais", label: "Laterais", edges: { left: 3, right: 3 } },
-  { key: "moldura", label: "Moldura completa", edges: { top: 3, bottom: 3, left: 3, right: 3 } },
+  { key: "tarjas", label: "Tarjas", edges: { top: 230, bottom: 230 } },
+  { key: "topo", label: "Só topo", edges: { top: 190 } },
+  { key: "laterais", label: "Laterais", edges: { left: 36, right: 36 } },
+  { key: "moldura", label: "Moldura completa", edges: { top: 40, bottom: 40, left: 40, right: 40 } },
 ];
 
 export default function TemplatesPage() {
@@ -45,10 +47,12 @@ export default function TemplatesPage() {
   const [view, setView] = useState<View>("editar");
   const [showSampleCap, setShowSampleCap] = useState(true);
   const [safeMode, setSafeMode] = useState<SafeArea>("normal");
+  const [linkEdges, setLinkEdges] = useState(false);
   useEffect(() => {
     try {
       const v = localStorage.getItem("ezt-safe-area");
       if (v === "normal" || v === "tiktok" || v === "off") setSafeMode(v);
+      setLinkEdges(localStorage.getItem("ezt-link-edges") === "1");
     } catch { /* armazenamento indisponível: fica o padrão */ }
   }, []);
   const changeSafeMode = (v: SafeArea) => {
@@ -163,9 +167,45 @@ export default function TemplatesPage() {
     setCfg((c) => {
       const f = { ...c.frame };
       for (const { key } of EDGES) {
-        const size = edges[key];
-        f[key] = size ? { ...f[key], enabled: true, size } : { ...f[key], enabled: false };
+        const px = edges[key];
+        f[key] = px ? { ...f[key], enabled: true, size: pxToSize(key, px) } : { ...f[key], enabled: false };
       }
+      return { ...c, frame: f };
+    });
+    setDirty(true);
+  }
+  // bordas em px do template: topo/inferior medem sobre a altura, esquerda/direita sobre a largura,
+  // então "mesmo número" = mesma espessura visível (o config continua guardando %)
+  const edgeDim = (k: EdgeKey) => (k === "top" || k === "bottom" ? cfg.height : cfg.width);
+  const edgePx = (k: EdgeKey) => Math.round(((cfg.frame[k]?.size ?? 0) * edgeDim(k)) / 100);
+  const edgeMaxPx = (k: EdgeKey) => Math.floor(edgeDim(k) * 0.45);
+  const linkedMaxPx = Math.min(...EDGES.map(({ key }) => edgeMaxPx(key)));
+  const pxToSize = (k: EdgeKey, px: number) => Math.min(45, Math.max(0.1, (px / edgeDim(k)) * 100));
+
+  function setEdgePx(k: EdgeKey, px: number) {
+    setCfg((c) => {
+      const f = { ...c.frame };
+      for (const { key } of EDGES) {
+        if (key === k) f[key] = { ...f[key], size: pxToSize(key, px), enabled: true };
+        else if (linkEdges) f[key] = { ...f[key], size: pxToSize(key, Math.min(px, linkedMaxPx)) };
+      }
+      return { ...c, frame: f };
+    });
+    setDirty(true);
+  }
+  function toggleLink() {
+    const next = !linkEdges;
+    setLinkEdges(next);
+    try { localStorage.setItem("ezt-link-edges", next ? "1" : "0"); } catch { /* ignora */ }
+    if (next) { // ao travar, todas ficam com a espessura da primeira borda ligada
+      const ref = EDGES.find(({ key }) => cfg.frame[key]?.enabled)?.key ?? "top";
+      setEdgePxAll(Math.min(edgePx(ref), linkedMaxPx));
+    }
+  }
+  function setEdgePxAll(px: number) {
+    setCfg((c) => {
+      const f = { ...c.frame };
+      for (const { key } of EDGES) f[key] = { ...f[key], size: pxToSize(key, px) };
       return { ...c, frame: f };
     });
     setDirty(true);
@@ -588,20 +628,29 @@ export default function TemplatesPage() {
                 </Group>
 
                 <Group title="Cada borda" right={
-                  <span className="flex items-center gap-2 text-[11px] text-zinc-400">
-                    Mesma cor em todas
+                  <span className="flex items-center gap-3 text-[11px] text-zinc-400">
+                    <button type="button" onClick={toggleLink} aria-pressed={linkEdges} data-testid="link-edges"
+                      title={linkEdges ? "Bordas juntas: mexer em uma move todas. Clique para soltar." : "Bordas soltas: cada uma por si. Clique para mover todas juntas."}
+                      className={`grid h-8 w-8 place-items-center rounded-lg text-base ring-1 transition ${
+                        linkEdges ? "bg-[rgb(var(--a-500)/.25)] ring-[rgb(var(--a-400)/.6)]" : "ring-white/15 hover:bg-white/5"}`}>
+                      <span aria-hidden="true">{linkEdges ? "🔒" : "🔓"}</span>
+                      <span className="sr-only">{linkEdges ? "Soltar bordas" : "Mover todas as bordas juntas"}</span>
+                    </button>
+                    <span className="hidden sm:inline">Mesma cor em todas</span>
                     <Swatch label="Mesma cor em todas" value={cfg.frame.top.color} onChange={colorAllEdges} />
                   </span>
                 }>
+                  {linkEdges && <p className="-mt-1 text-[11px] text-zinc-500">🔒 Juntas: mexer em uma borda move todas com a mesma espessura.</p>}
                   <div className="space-y-2" data-testid="edges">
-                    {EDGES.map(({ key, label, max }) => {
+                    {EDGES.map(({ key, label }) => {
                       const e = cfg.frame[key];
                       return (
                         <div key={key} className={`grid grid-cols-[7.5rem_1fr_auto] items-center gap-3 rounded-lg px-3 py-2 ring-1 transition ${
                           e.enabled ? "bg-white/5 ring-white/10" : "ring-white/5"}`} data-testid={`edge-${key}`}>
                           <Toggle label={label} checked={e.enabled} onChange={(v) => updateEdge(key, { enabled: v })} />
-                          <Range label={key === "top" || key === "bottom" ? "Altura" : "Largura"} value={e.size} min={0.5} max={max} step={0.5}
-                            disabled={!e.enabled} onChange={(v) => updateEdge(key, { size: v, enabled: true })} suffix="%" />
+                          <Range label={key === "top" || key === "bottom" ? "Altura" : "Largura"} value={edgePx(key)}
+                            min={EDGE_MIN_PX} max={linkEdges ? linkedMaxPx : edgeMaxPx(key)} step={1}
+                            disabled={!e.enabled} onChange={(v) => setEdgePx(key, v)} suffix="px" />
                           <Swatch label={`Cor da borda ${label.toLowerCase()}`} value={e.color} disabled={!e.enabled}
                             onChange={(v) => updateEdge(key, { color: v })} />
                         </div>

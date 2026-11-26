@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 // Controles pequenos e reutilizáveis do editor de templates (seguem as cores do tema).
 
 const ACCENT = { accentColor: "rgb(var(--a-500))" } as const;
@@ -29,6 +31,38 @@ export function Group({ title, children, right }: { title: string; children: Rea
   );
 }
 
+/** Número digitável: aceita qualquer coisa enquanto digita; confirma (com limites) ao sair ou apertar Enter. */
+export function NumberInput({ value, onChange, min, max, step = 1, suffix = "", label, disabled = false }: {
+  value: number; onChange: (v: number) => void; min: number; max: number; step?: number; suffix?: string;
+  label: string; disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? String(Number(value.toFixed(2)));
+  const commit = () => {
+    if (draft === null) return;
+    const v = Number(draft.replace(",", "."));
+    if (Number.isFinite(v)) onChange(Math.min(max, Math.max(min, Math.round(v / step) * step)));
+    setDraft(null);
+  };
+  return (
+    <span className={`inline-flex items-center rounded-md bg-black/25 px-1.5 ring-1 ring-white/10 focus-within:ring-[rgb(var(--a-400))] ${disabled ? "opacity-40" : ""}`}>
+      <input type="text" inputMode="decimal" value={shown} disabled={disabled} aria-label={`${label} (valor)`}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          const v = Number(e.target.value.replace(",", "."));
+          if (e.target.value !== "" && Number.isFinite(v) && v >= min && v <= max) onChange(v); // ao vivo quando já é válido
+        }}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") { setDraft(null); (e.target as HTMLInputElement).blur(); }
+        }}
+        className="w-11 bg-transparent py-0.5 text-right font-mono text-[11px] text-zinc-100 outline-none" />
+      {suffix && <span className="pl-0.5 font-mono text-[11px] text-zinc-400">{suffix}</span>}
+    </span>
+  );
+}
+
 export function Range({
   label, value, onChange, min, max, step = 1, suffix = "", disabled = false,
 }: {
@@ -36,14 +70,14 @@ export function Range({
   disabled?: boolean;
 }) {
   return (
-    <label className={`block text-xs text-zinc-400 ${disabled ? "opacity-40" : ""}`}>
-      <span className="flex justify-between">
+    <div className={`block text-xs text-zinc-400 ${disabled ? "opacity-40" : ""}`}>
+      <span className="flex items-center justify-between gap-2">
         {label}
-        <span className="font-mono text-zinc-200">{Number(value.toFixed(2))}{suffix}</span>
+        <NumberInput value={value} onChange={onChange} min={min} max={max} step={step} suffix={suffix} label={label} disabled={disabled} />
       </span>
       <input type="range" min={min} max={max} step={step} value={value} disabled={disabled} style={ACCENT}
         onChange={(e) => onChange(Number(e.target.value))} className="mt-1 w-full" aria-label={label} />
-    </label>
+    </div>
   );
 }
 

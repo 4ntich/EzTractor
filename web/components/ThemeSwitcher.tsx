@@ -89,7 +89,7 @@ export default function ThemeSwitcher() {
         </button>
         {open && (
           <ul role="listbox" aria-label="Tema"
-            className="card ezt-rise absolute right-0 z-50 mt-2 w-52 p-1.5">
+            className="card menu-pop ezt-rise absolute right-0 z-50 mt-2 w-52 p-1.5">
             {THEMES.map((t) => (
               <li key={t.key}>
                 <button type="button" role="option" aria-selected={t.key === theme} onClick={() => { choose(t.key); setOpen(false); }}

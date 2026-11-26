@@ -46,7 +46,12 @@ def build_filter(spec: RenderSpec, src_w: int, src_h: int) -> str:
     z = max(0.5, spec.zoom)
     ZW, ZH = _even(W * z), _even(H * z)
     if spec.layout == "crop":
-        graph = f"[0:v]scale={ZW}:{ZH}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[base]"
+        # zoom < 100%: o vídeo fica menor que a tela; recorta só o que existe e completa com a cor de fundo
+        graph = (
+            f"[0:v]scale={ZW}:{ZH}:force_original_aspect_ratio=increase,"
+            f"crop='min(iw,{W})':'min(ih,{H})',"
+            f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color={_hex(spec.background)},setsar=1[base]"
+        )
     elif spec.layout == "fit":
         graph = (
             f"[0:v]split=2[a][b];"
