@@ -26,6 +26,7 @@ from ..db import get_db, init_db
 from ..fonts import catalog as fonts_catalog
 from ..models import ACTIVE_STATUSES, Clip, Project, ProjectStatus, Template
 from ..pipeline.media import MediaError, probe
+from ..pipeline.social import dominant_signal, make_caption, make_hashtags, normalize_hashtags, social_text
 from ..pipeline.template_render import VARIABLES, normalize, render_preview
 from ..presets import PRESETS
 from ..pipeline.ranker import ollama_status
@@ -88,8 +89,19 @@ def safe_filename(title: str, ext: str) -> str:
     return f"{name}{ext}"
 
 
+def clip_social(c: Clip) -> tuple[str, list[str]]:
+    """Legenda e hashtags do clipe; clipes antigos (sem legenda salva) ganham a gerada na hora."""
+    st = (c.project.settings or {}) if c.project else {}
+    game, lang = st.get("game", ""), st.get("language")
+    caption = c.caption if c.caption is not None else make_caption(
+        c.title or "", c.hook or "", game, lang, dominant_signal(c.signals))
+    tags = c.hashtags if c.hashtags is not None else make_hashtags(game, lang)
+    return caption, tags
+
+
 def clip_out(c: Clip) -> ClipOut:
     ready = c.render_status == "ready"
+    caption, tags = clip_social(c)
     return ClipOut(
         id=c.id, start_s=c.start_s, end_s=c.end_s, score=c.score, title=c.title, hook=c.hook,
         reason=c.reason, render_status=c.render_status, ranker=(c.signals or {}).get("ranker", "heuristic"),
@@ -97,6 +109,7 @@ def clip_out(c: Clip) -> ClipOut:
         download_url=sign(c.render_key, safe_filename(c.title or "clipe", Path(c.render_key).suffix)) if ready else None,
         cuts=c.cuts or [],
         thumb_url=sign(c.thumb_key) if ready else None,
+        caption=caption, hashtags=tags, social_text=social_text(caption, tags),
     )
 
 
@@ -242,6 +255,8 @@ def build_clips_zip(p: Project, dst: Path) -> int:
                 k += 1
             used.add(name.lower())
             z.write(src, arcname=name)
+            # legenda + hashtags prontas, com o mesmo nome do vídeo (BOM: o Bloco de Notas abre emojis certinho)
+            z.writestr(str(Path(name).with_suffix(".txt")), "\ufeff" + social_text(*clip_social(c)) + "\n")
             n += 1
     return n
 
@@ -334,6 +349,10 @@ def update_clip(clip_id: str, body: ClipUpdateIn, db: Session = Depends(get_db))
         clip.title = body.title
     if body.hook is not None:
         clip.hook = body.hook
+    if body.caption is not None:
+        clip.caption = body.caption.strip()
+    if body.hashtags is not None:
+        clip.hashtags = normalize_hashtags(body.hashtags)
     if needs_render:
         clip.render_status = "pending"
     db.commit()

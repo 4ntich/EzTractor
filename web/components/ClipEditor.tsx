@@ -25,6 +25,8 @@ export default function ClipEditor({ clip, project, onClose, onSaved }: {
   const [cuts, setCuts] = useState<Cut[]>((clip.cuts ?? []).map((c) => [c[0], c[1]] as Cut));
   const [title, setTitle] = useState(clip.title);
   const [hook, setHook] = useState(clip.hook);
+  const [caption, setCaption] = useState(clip.caption ?? "");
+  const [tags, setTags] = useState((clip.hashtags ?? []).join(" "));
   const [cutIn, setCutIn] = useState<number | null>(null);
   const [t, setT] = useState(clip.start_s);
   const [busy, setBusy] = useState(false);
@@ -97,7 +99,8 @@ export default function ClipEditor({ clip, project, onClose, onSaved }: {
       const kept = cuts.filter(([a, b]) => a >= start && b <= end);
       await api(`/clips/${clip.id}`, {
         method: "PATCH",
-        body: JSON.stringify({ start_s: round(start), end_s: round(end), cuts: kept, title, hook: whole ? undefined : hook }),
+        body: JSON.stringify({ start_s: round(start), end_s: round(end), cuts: kept, title, hook: whole ? undefined : hook,
+          caption, hashtags: tags }),
       });
       onSaved();
       onClose();
@@ -221,6 +224,16 @@ export default function ClipEditor({ clip, project, onClose, onSaved }: {
               <input className="input mt-1" maxLength={200} value={hook} onChange={(e) => setHook(e.target.value)} />
             </label>
           )}
+        </div>
+        <div className="mt-4 grid gap-3">
+          <label className="text-xs text-zinc-400">Legenda para postar
+            <textarea className="input mt-1 min-h-[84px]" maxLength={2200} value={caption}
+              onChange={(e) => setCaption(e.target.value)} data-testid="edit-caption" />
+          </label>
+          <label className="text-xs text-zinc-400">Hashtags (separe por espaço)
+            <input className="input mt-1 font-mono text-[rgb(var(--a-200))]" value={tags} placeholder="#jogo #clips #fyp"
+              onChange={(e) => setTags(e.target.value)} data-testid="edit-hashtags" />
+          </label>
         </div>
         <p className="mt-3 text-[11px] text-zinc-500">
           Faixas listradas amarelas: propaganda, pedido de inscrição ou final de vídeo detectados. Arraste as alças brancas

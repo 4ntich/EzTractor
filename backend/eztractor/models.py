@@ -72,6 +72,8 @@ class Clip(Base):
     reason: Mapped[str] = mapped_column(Text, default="")
     signals: Mapped[dict] = mapped_column(JSON, default=dict)
     cuts: Mapped[list | None] = mapped_column(JSON, nullable=True)  # trechos removidos: [[ini, fim], ...] absolutos
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)  # legenda para postar (None = gerar na hora)
+    hashtags: Mapped[list | None] = mapped_column(JSON, nullable=True)
     render_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     thumb_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     render_status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|ready|failed

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import ClipEditor from "@/components/ClipEditor";
+import CopyCaption from "@/components/CopyCaption";
 import { Clip, fileUrl, fmtTime, isBusy, Project, RANKER_LABEL } from "@/lib/api";
 
 function scoreColor(score: number) {
@@ -47,7 +48,8 @@ export default function ClipCard({ clip, rank, project, onChange }: {
               {cutTotal > 0 && <span className="ml-1 text-red-300">· {clip.cuts!.length} corte(s)</span>}
             </p>
             <p className="line-clamp-3 text-xs text-zinc-400">{clip.reason}</p>
-            <div className="mt-auto flex gap-2 pt-2">
+            <div className="mt-auto pt-1"><CopyCaption clip={clip} compact /></div>
+            <div className="flex gap-2">
               {clip.video_url && (
                 <a className="btn flex-1" href={fileUrl(clip.download_url ?? clip.video_url)} download>
                   Baixar

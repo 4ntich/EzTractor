@@ -315,9 +315,14 @@ def test_download_all_clips_as_zip(client, sample_video):
     r = client.get(link["url"])
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
     assert "clipes.zip" in r.headers["content-disposition"]
-    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
-    assert len(names) == len(ready) and names[0].startswith("01 - ") and all(n.endswith(".mp4") for n in names)
-    assert len(set(names)) == len(names)
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    videos = [n for n in z.namelist() if n.endswith(".mp4")]
+    texts = [n for n in z.namelist() if n.endswith(".txt")]
+    assert len(videos) == len(ready) and videos[0].startswith("01 - ") and len(set(videos)) == len(videos)
+    # cada vídeo tem a legenda + hashtags ao lado, com o mesmo nome
+    assert sorted(t[:-4] for t in texts) == sorted(v[:-4] for v in videos)
+    first = z.read(texts[0] if texts[0].startswith("01 - ") else sorted(texts)[0]).decode("utf-8-sig").strip()
+    assert first == p["clips"][0]["social_text"] and "#" in first
 
     # link adulterado ou de outro projeto não funciona
     assert client.get(link["url"] + "x").status_code == 403

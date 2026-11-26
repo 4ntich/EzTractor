@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from ..config import get_settings
 from .candidates import Candidate, words_in
 from .headlines import make_headline
+from .social import MAX_HASHTAGS, normalize_hashtags
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +32,8 @@ class RankedClip:
     hook: str
     reason: str
     stats: dict
+    caption: str = ""
+    hashtags: list[str] | None = None
 
 
 SYSTEM_PROMPT = """Você é um editor de clipes para TikTok, Reels e Shorts especializado em lives de jogos.
@@ -47,6 +50,10 @@ Regras:
 - title: título curto e chamativo (máx. 60 caracteres), no idioma da transcrição.
 - hook: frase de gancho para os 3 primeiros segundos (máx. 50 caracteres), no idioma da transcrição.
 - reason: 1 frase explicando a nota.
+- caption: legenda pronta para postar no TikTok/Reels/Shorts, no idioma da transcrição: 1 a 3 linhas curtas, \
+com 1 ou 2 emojis e uma chamada para seguir. Sem hashtags na legenda.
+- hashtags: de 5 a 8 hashtags relevantes (com #), misturando o nome do jogo, o tipo de momento e tags \
+populares de games no idioma da transcrição.
 - start/end: você pode refinar os limites em até 8 segundos para começar no build-up e terminar logo \
 após o clímax, mantendo a duração permitida.
 - NUNCA escolha como destaque trechos de propaganda, patrocínio, cupom, pedido de inscrição/like ou o final
@@ -68,10 +75,12 @@ _SCHEMA = {
                     "title": {"type": "string"},
                     "hook": {"type": "string"},
                     "reason": {"type": "string"},
+                    "caption": {"type": "string"},
+                    "hashtags": {"type": "array", "items": {"type": "string"}},
                     "start": {"type": "number"},
                     "end": {"type": "number"},
                 },
-                "required": ["candidate_id", "score", "title", "hook", "reason", "start", "end"],
+                "required": ["candidate_id", "score", "title", "hook", "reason", "caption", "hashtags", "start", "end"],
                 "additionalProperties": False,
             },
         }
@@ -138,7 +147,9 @@ def _from_ai_json(
         try:
             cid = int(item["candidate_id"])
             rc = RankedClip(cid, float(item["start"]), float(item["end"]), int(item["score"]),
-                            str(item["title"]), str(item["hook"]), str(item["reason"]), {})
+                            str(item["title"]), str(item["hook"]), str(item["reason"]), {},
+                            caption=str(item.get("caption") or "").strip()[:2200],
+                            hashtags=normalize_hashtags(item.get("hashtags"))[:MAX_HASHTAGS] or None)
         except (KeyError, TypeError, ValueError):
             continue  # modelos locais às vezes erram um item; ignora só ele
         if cid not in by_id or cid in seen:

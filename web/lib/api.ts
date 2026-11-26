@@ -16,7 +16,33 @@ export type Clip = {
   download_url?: string | null;
   cuts?: number[][];
   thumb_url: string | null;
+  caption: string; // legenda para postar
+  hashtags: string[];
+  social_text: string; // legenda + hashtags, pronto para colar
 };
+
+/** Copia texto. No celular pela rede local (http) o navegador bloqueia a área de transferência moderna,
+ *  então cai no método antigo (textarea + execCommand), que ainda funciona. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* tenta o método antigo */ }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, text.length);
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch { ok = false; }
+  ta.remove();
+  return ok;
+}
 
 export type Ranker = "heuristic" | "ollama" | "claude";
 

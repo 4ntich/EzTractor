@@ -19,6 +19,7 @@ from ..models import ACTIVE_STATUSES, Clip, Project, ProjectStatus, Template
 from . import candidates as cand_mod
 from . import ranker, signals
 from .captions import build_ass, write_ass
+from .social import dominant_signal, make_caption, make_hashtags
 from .ingest import download_url
 from .media import extract_audio, probe, thumbnail
 from .render import RenderSpec, cut_concat, render_clip
@@ -177,7 +178,9 @@ def _whole_video_clip(db: Session, project: Project) -> Clip:
     cuts = cuts_within(0.0, dur, project.skip_segments or []) if st.get("skip_ads", True) else []
     clip = Clip(project_id=project.id, start_s=0.0, end_s=dur, score=100, title=project.title or "", hook="",
                 reason="Vídeo completo" + (f" sem {len(cuts)} trecho(s) de propaganda/final." if cuts else "."),
-                signals={"ranker": "download"}, cuts=cuts)
+                signals={"ranker": "download"}, cuts=cuts,
+                caption=make_caption(project.title or "", "", st.get("game", ""), st.get("language")),
+                hashtags=make_hashtags(st.get("game", ""), st.get("language")))
     db.add(clip)
     db.flush()
     return clip
@@ -303,9 +306,13 @@ def _clips_mode(db: Session, project: Project, info, src: Path, workdir: Path, p
     db.flush()
     clips = []
     for r in ranked:
+        game, lang = st.get("game", ""), (project.settings or {}).get("language")
         clip = Clip(project_id=project.id, start_s=r.start, end_s=r.end, score=r.score, title=r.title,
                     hook=r.hook, reason=r.reason, signals={**r.stats, "ranker": method},
-                    cuts=cuts_within(r.start, r.end, skips))  # se a IA estendeu para dentro de um trecho a pular
+                    cuts=cuts_within(r.start, r.end, skips),  # se a IA estendeu para dentro de um trecho a pular
+                    # legenda/hashtags da IA; sem IA (ou se ela não mandou), o gerador grátis
+                    caption=r.caption or make_caption(r.title, r.hook, game, lang, dominant_signal(r.stats)),
+                    hashtags=r.hashtags or make_hashtags(game, lang))
         db.add(clip)
         clips.append(clip)
     _update(db, project, stage="render", progress=70)

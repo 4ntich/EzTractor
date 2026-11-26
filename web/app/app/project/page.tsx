@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 
 import ClipCard from "@/components/ClipCard";
 import ClipEditor from "@/components/ClipEditor";
+import CopyCaption from "@/components/CopyCaption";
 import StatusBadge from "@/components/StatusBadge";
 import { api, fileUrl, fmtTime, isBusy, Project, RENDER_QUALITIES } from "@/lib/api";
 import type { Template } from "@/lib/templates";
@@ -270,6 +271,7 @@ function DownloadResult({ project, onChange }: { project: Project; onChange: () 
           {c.download_url && <a className="btn" href={fileUrl(c.download_url)} download>⬇ Baixar vídeo</a>}
         </div>
       </div>
+      <div className="max-w-xl px-4 pb-4"><CopyCaption clip={c} /></div>
       {editing && <ClipEditor clip={c} project={project} onClose={() => setEditing(false)} onSaved={onChange} />}
     </div>
   );

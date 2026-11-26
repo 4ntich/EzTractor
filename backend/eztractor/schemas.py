@@ -114,6 +114,9 @@ class ClipOut(BaseModel):
     download_url: str | None = None  # mesmo vídeo, salvo com o título do clipe
     cuts: list[list[float]] = []
     thumb_url: str | None = None
+    caption: str = ""  # legenda para postar
+    hashtags: list[str] = []
+    social_text: str = ""  # legenda + hashtags, pronto para colar na rede
 
 
 class ProjectOut(BaseModel):
@@ -140,7 +143,8 @@ class ClipUpdateIn(BaseModel):
     cuts: list[list[float]] | None = Field(None, max_length=200)
     title: str | None = Field(None, max_length=200)
     hook: str | None = Field(None, max_length=200)
-
+    caption: str | None = Field(None, max_length=2200)
+    hashtags: list[str] | str | None = None  # lista ou texto ("#a #b, c")
 
 
 # ---------------------------------------------------------------- templates
