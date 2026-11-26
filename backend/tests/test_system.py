@@ -138,3 +138,31 @@ def test_update_check_and_versions(desktop, monkeypatch):
     updater._cache.update(at=0.0, data=None)
     r = c.get("/system/update", params={"force": True}).json()
     assert r["available"] is False and "verificar" in r["error"]
+
+
+def test_pages_always_revalidate_but_hashed_assets_are_cached(tmp_path, monkeypatch):
+    """Depois de atualizar o app, a janela não pode continuar mostrando as páginas antigas do cache."""
+    from starlette.testclient import TestClient
+
+    from eztractor import config
+    from eztractor.api.main import create_app
+
+    web = tmp_path / "web"
+    (web / "app").mkdir(parents=True)
+    (web / "_next" / "static" / "chunks").mkdir(parents=True)
+    (web / "app" / "index.html").write_text("<html>EzTractor</html>")
+    (web / "_next" / "static" / "chunks" / "main-abc123.js").write_text("x")
+    (web / "logo.png").write_bytes(b"png")
+    monkeypatch.setenv("EZT_WEB_DIR", str(web))
+    monkeypatch.setenv("EZT_DATABASE_URL", f"sqlite:///{tmp_path / 'db.sqlite'}")
+    config.get_settings.cache_clear()
+    try:
+        c = TestClient(create_app())
+        assert c.get("/app/").headers["cache-control"] == "no-cache"
+        assert c.get("/logo.png").headers["cache-control"] == "no-cache"
+        js = c.get("/_next/static/chunks/main-abc123.js")
+        assert "immutable" in js.headers["cache-control"]
+        etag = c.get("/app/").headers["etag"]  # revalidar é barato: 304 quando nada mudou
+        assert c.get("/app/", headers={"if-none-match": etag}).status_code == 304
+    finally:
+        config.get_settings.cache_clear()

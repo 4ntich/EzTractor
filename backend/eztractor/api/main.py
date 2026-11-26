@@ -463,6 +463,17 @@ def apply_template(project_id: str, body: ApplyTemplateIn, db: Session = Depends
     return project_out(p)
 
 
+class WebFiles(StaticFiles):
+    """Site do app. Arquivos com hash no nome (/_next/static) podem ficar no cache para sempre; as páginas
+    sempre revalidam, senão a janela do app continuava mostrando a versão antiga depois de atualizar."""
+
+    async def get_response(self, path: str, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = ("public, max-age=31536000, immutable" if path.startswith("_next/static/")
+                                         else "no-cache")
+        return resp
+
+
 _BLOCKED_PAGE = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>EzTractor</title></head>
 <body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#04232a;color:#e6f4f6;
@@ -548,7 +559,7 @@ def create_app() -> FastAPI:
     # Site estático (Next.js exportado). Montado por último para não encobrir as rotas da API.
     web_dir = get_settings().web_dir
     if web_dir and Path(web_dir).is_dir():
-        app.mount("/", StaticFiles(directory=web_dir, html=True), name="web")
+        app.mount("/", WebFiles(directory=web_dir, html=True), name="web")
     return app
 
 

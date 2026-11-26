@@ -210,6 +210,26 @@ def _dark_titlebar(window) -> None:
         pass
 
 
+def _clear_page_cache_on_update(storage: Path) -> None:
+    """Na 1ª abertura de uma versão nova, apaga o cache de páginas da janela (WebView2). Sem isso a janela
+    podia continuar mostrando as páginas da versão anterior depois de atualizar. O armazenamento local
+    (tema, preferências) fica intacto: só as pastas de cache são apagadas."""
+    import shutil
+
+    marker = storage / "versao.txt"
+    try:
+        if marker.exists() and marker.read_text(encoding="utf-8").strip() == APP_VERSION:
+            return
+        for name in ("Cache", "Code Cache", "GPUCache", "Service Worker"):
+            for p in storage.rglob(name):
+                if p.is_dir():
+                    shutil.rmtree(p, ignore_errors=True)
+        storage.mkdir(parents=True, exist_ok=True)
+        marker.write_text(APP_VERSION, encoding="utf-8")
+    except OSError:
+        pass  # nunca impede o app de abrir
+
+
 def run_app(smoke: bool = False) -> int:
     """Abre o EzTractor numa janela própria (sem navegador). Retorna o código de saída."""
     import webview
@@ -225,6 +245,7 @@ def run_app(smoke: bool = False) -> int:
         d = data_dir()
     url = f"http://127.0.0.1:{port}/app/"
 
+    _clear_page_cache_on_update(data_dir() / "webview")
     webview.settings["ALLOW_DOWNLOADS"] = True  # botões "Baixar" abrem o "Salvar como"
     webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
     api = _DesktopApi(d / "media", url)
