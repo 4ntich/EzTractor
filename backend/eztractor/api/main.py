@@ -545,6 +545,62 @@ def disconnect_devices(request: Request):
     return system.lan_info()
 
 
+# ---------- descobrir virais no YouTube
+@api.get("/viral/search")
+def viral_search(q: str, period: str = "week", kind: str = "shorts", sort: str = "trending",
+                 region: str | None = "BR", limit: int = 25):
+    from .. import viral
+
+    try:
+        return viral.search(q, period=period, kind=kind, sort=sort, region=region or None, limit=limit)
+    except viral.ViralError as e:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from None
+
+
+@api.get("/system/youtube")
+def youtube_key_status():
+    s = get_settings()
+    return {"configured": bool(s.youtube_api_key.strip()), "configurable": bool(s.config_file)}
+
+
+class YoutubeKeyIn(BaseModel):
+    key: str
+
+
+@api.post("/system/youtube")
+def set_youtube_key(body: YoutubeKeyIn, request: Request):
+    """Testa a chave (1 unidade da cota) e guarda no config.env do app."""
+    from .. import viral
+
+    _local_only(request)
+    key = body.key.strip()
+    if not key or len(key) < 20 or " " in key:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "isso não parece uma chave de API do Google")
+    try:
+        viral.check_key(key)
+    except viral.ViralError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e)) from None
+    try:
+        system.apply_config({"EZT_YOUTUBE_API_KEY": key})
+    except RuntimeError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
+    viral._cache.clear()
+    return {"configured": True}
+
+
+@api.delete("/system/youtube")
+def delete_youtube_key(request: Request):
+    from .. import viral
+
+    _local_only(request)
+    try:
+        system.apply_config({"EZT_YOUTUBE_API_KEY": ""})
+    except RuntimeError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
+    viral._cache.clear()
+    return {"configured": False}
+
+
 @api.post("/system/restart")
 def restart_app(request: Request):
     _local_only(request)

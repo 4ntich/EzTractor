@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     # aceitar conexões de outros aparelhos da rede (celular no mesmo Wi-Fi)
     lan_access: bool = False
     config_file: str = ""  # config.env do app Windows (a página "Celular" grava nele)
+    youtube_api_key: str = ""  # YouTube Data API v3 (grátis) para a busca de virais com números
     session_gen: int = 0  # aumenta ao encerrar conexões / trocar a senha: invalida os logins antigos
 
     # versão e atualização

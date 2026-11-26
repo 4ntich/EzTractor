@@ -44,6 +44,13 @@ export default function NewProjectForm() {
   const router = useRouter();
   const [source, setSource] = useState<"url" | "upload">("url");
   const [url, setUrl] = useState("");
+  useEffect(() => { // "✂ Cortar este vídeo" na página de virais: /app?url=...
+    const u = new URLSearchParams(window.location.search).get("url");
+    if (u) {
+      setUrl(u);
+      document.getElementById("new-project")?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, []);
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [s, setS] = useState<ProjectSettings>(DEFAULTS);
@@ -120,7 +127,7 @@ export default function NewProjectForm() {
   }
 
   return (
-    <form onSubmit={submit} className="card space-y-5 p-5">
+    <form id="new-project" onSubmit={submit} className="card space-y-5 p-5">
       <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="O que fazer">
         {([
           ["clips", "✂️  Gerar cortes com IA", "Encontra os melhores momentos e cria clipes verticais."],

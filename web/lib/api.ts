@@ -224,3 +224,22 @@ export type UpdateInfo = {
   progress: number;
   can_install: boolean;
 };
+
+export type ViralItem = {
+  id: string;
+  url: string;
+  title: string;
+  channel: string;
+  channel_url: string | null;
+  published_at: string | null;
+  age_hours: number | null;
+  views: number | null;
+  likes: number | null;
+  comments: number | null;
+  views_per_day: number | null;
+  engagement: number | null;
+  duration_s: number | null;
+  is_short: boolean;
+  thumbnail: string;
+};
+export type ViralResult = { source: "api" | "ytdlp"; notice: string | null; results: ViralItem[]; cached: boolean };

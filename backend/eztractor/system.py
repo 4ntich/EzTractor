@@ -54,7 +54,7 @@ def lan_info() -> dict:
 
 
 _LIVE = {"EZT_APP_PASSWORD": ("app_password", str), "EZT_LAN_ACCESS": ("lan_access", lambda v: v == "1"),
-         "EZT_SESSION_GEN": ("session_gen", int)}
+         "EZT_SESSION_GEN": ("session_gen", int), "EZT_YOUTUBE_API_KEY": ("youtube_api_key", str)}
 
 
 def apply_config(values: dict[str, str]) -> None:
