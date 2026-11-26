@@ -35,7 +35,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <div className="flex min-w-0 items-center gap-2 sm:gap-6">
             <Link href="/app" aria-label="EzTractor — início"><Logo /></Link>
             <div className="flex items-center gap-1">
-              <Link href="/app" className="nav-link" data-active={!path.startsWith("/app/templates")}>Projetos</Link>
+              <Link href="/app" className="nav-link" data-active={!path.startsWith("/app/templates") && !path.startsWith("/app/celular")}>Projetos</Link>
               <Link href="/app/templates" className="nav-link" data-active={path.startsWith("/app/templates")}>Templates</Link>
               {sys?.is_local && (
                 <Link href="/app/celular" className="nav-link" data-active={path.startsWith("/app/celular")}>Celular</Link>

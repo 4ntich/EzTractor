@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     # aceitar conexões de outros aparelhos da rede (celular no mesmo Wi-Fi)
     lan_access: bool = False
     config_file: str = ""  # config.env do app Windows (a página "Celular" grava nele)
+    session_gen: int = 0  # aumenta ao encerrar conexões / trocar a senha: invalida os logins antigos
 
     # versão e atualização
     app_version: str = "dev"

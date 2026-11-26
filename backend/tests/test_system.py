@@ -23,7 +23,10 @@ def desktop(tmp_path, monkeypatch):
 def test_local_window_needs_no_login_but_phone_does(desktop):
     from starlette.testclient import TestClient
 
+    from eztractor.config import get_settings
+
     c, _ = desktop
+    get_settings().lan_access = True  # acesso pela rede ligado
     # TestClient conecta como "testclient"; forçamos o IP via transport scope
     local = TestClient(c.app, client=("127.0.0.1", 5000))
     phone = TestClient(c.app, client=("192.168.0.50", 5000))
@@ -53,6 +56,59 @@ def test_enable_lan_writes_config_and_requires_password(desktop):
     info = local.get("/system/info").json()
     assert info["version"] == "0.7.0" and info["lan"]["configurable"] and info["is_local"]
     assert local.get("/system/qr.svg", params={"data": "http://192.168.0.2:8765/app/"}).text.startswith("<svg")
+
+
+def _lan_on(desktop):
+    from starlette.testclient import TestClient
+
+    from eztractor.config import get_settings
+
+    c, cfg = desktop
+    get_settings().lan_access = True
+    local = TestClient(c.app, client=("127.0.0.1", 5000))
+    phone = TestClient(c.app, client=("192.168.0.50", 5000), headers={"user-agent": "Mozilla/5.0 (Linux; Android 14)"})
+    tok = phone.post("/auth/login", json={"password": "segredo1"}).json()["token"]
+    return local, phone, {"Authorization": f"Bearer {tok}"}, cfg
+
+
+def test_phone_is_listed_and_disconnect_logs_it_out(desktop):
+    local, phone, h, _ = _lan_on(desktop)
+    assert phone.get("/projects", headers=h).status_code == 200
+    devices = local.get("/system/info").json()["lan"]["devices"]
+    assert [(d["ip"], d["device"]) for d in devices] == [("192.168.0.50", "Android")]
+    info = local.post("/system/lan/disconnect").json()
+    assert info["devices"] == []
+    r = phone.get("/projects", headers=h)
+    assert r.status_code == 401 and "encerrada" in r.json()["detail"]
+    tok = phone.post("/auth/login", json={"password": "segredo1"}).json()["token"]  # com a senha entra de novo
+    assert phone.get("/projects", headers={"Authorization": f"Bearer {tok}"}).status_code == 200
+
+
+def test_new_password_logs_out_old_sessions(desktop):
+    local, phone, h, cfg = _lan_on(desktop)
+    assert local.post("/system/lan", json={"enabled": True, "password": "novasenha"}).status_code == 200
+    assert phone.get("/projects", headers=h).status_code == 401
+    assert phone.post("/auth/login", json={"password": "segredo1"}).status_code == 401
+    assert phone.post("/auth/login", json={"password": "novasenha"}).status_code == 200
+    assert "EZT_APP_PASSWORD=novasenha" in cfg.read_text(encoding="utf-8")
+
+
+def test_delete_password_turns_off_phone_access_immediately(desktop):
+    local, phone, h, cfg = _lan_on(desktop)
+    info = local.delete("/system/lan/password").json()
+    assert info["password_set"] is False and info["enabled"] is False and info["urls"] == []
+    assert phone.get("/auth/status").status_code == 403  # bloqueado na hora, sem reiniciar
+    assert phone.get("/projects", headers=h).status_code == 403
+    text = cfg.read_text(encoding="utf-8")
+    assert "EZT_APP_PASSWORD=\n" in text and "EZT_LAN_ACCESS=0" in text
+    assert local.get("/projects").status_code == 200  # no computador continua tudo normal
+
+
+def test_turning_lan_off_blocks_phone_without_restart(desktop):
+    local, phone, h, _ = _lan_on(desktop)
+    r = local.post("/system/lan", json={"enabled": False})
+    assert r.status_code == 200 and r.json()["restart_required"] is False
+    assert phone.get("/projects", headers=h).status_code == 403
 
 
 def test_update_check_and_versions(desktop, monkeypatch):

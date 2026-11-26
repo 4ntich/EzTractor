@@ -297,3 +297,28 @@ def test_sponsorblock_segments(monkeypatch):
     assert [(s["start"], s["end"], s["reason"]) for s in segs] == [(12.5, 40.0, "Patrocínio"), (580, 600, "Final do vídeo")]
     monkeypatch.setattr(httpx, "get", lambda *a, **k: (_ for _ in ()).throw(httpx.ConnectError("off")))
     assert from_sponsorblock("abc", 600) == []
+
+
+def test_download_all_clips_as_zip(client, sample_video):
+    import io
+    import zipfile
+
+    p = _upload(client, sample_video, {"render_height": 640, "max_clips": 3, "min_duration_s": 10, "max_duration_s": 15},
+                title="Live: sexta/à noite")
+    p = _wait(client, p["id"], {"ready", "failed"})
+    assert p["status"] == "ready", p["error"]
+    ready = [c for c in p["clips"] if c["render_status"] == "ready"]
+    assert len(ready) >= 2
+
+    link = client.get(f"/projects/{p['id']}/download-all").json()
+    assert link["count"] == len(ready) and link["url"].startswith(f"/zips/{p['id']}?sig=")
+    r = client.get(link["url"])
+    assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+    assert "clipes.zip" in r.headers["content-disposition"]
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert len(names) == len(ready) and names[0].startswith("01 - ") and all(n.endswith(".mp4") for n in names)
+    assert len(set(names)) == len(names)
+
+    # link adulterado ou de outro projeto não funciona
+    assert client.get(link["url"] + "x").status_code == 403
+    assert client.get(link["url"].replace(p["id"], "outro")).status_code == 403

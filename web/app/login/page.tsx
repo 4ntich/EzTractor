@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import Logo from "@/components/Logo";
 import ThemeSwitcher from "@/components/ThemeSwitcher";
@@ -12,6 +12,13 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => { // motivo de ter caído aqui (ex.: conexão encerrada no computador)
+    try {
+      const m = sessionStorage.getItem("ezt-login-msg");
+      if (m) { setError(m); sessionStorage.removeItem("ezt-login-msg"); }
+    } catch { /* ignora */ }
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

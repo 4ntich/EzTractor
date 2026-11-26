@@ -12,31 +12,67 @@ from .config import get_settings
 
 
 def lan_ips() -> list[str]:
-    ips: set[str] = set()
+    """IPs da rede local. O 1º é o da interface que o PC usa para sair (o Wi-Fi/cabo de verdade);
+    os demais costumam ser adaptadores virtuais (VirtualBox, WSL, Hyper-V, Docker) que o celular não alcança."""
+    primary = None
     try:  # IP da interface de saída (não envia pacotes)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("10.255.255.255", 1))
-            ips.add(s.getsockname()[0])
+            primary = s.getsockname()[0]
     except OSError:
         pass
+    others: set[str] = set()
     try:
         for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
-            ips.add(info[4][0])
+            others.add(info[4][0])
     except OSError:
         pass
     private = re.compile(r"^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)")
-    return sorted(ip for ip in ips if private.match(ip))
+    out = [primary] if primary and private.match(primary) else []
+    return out + sorted(ip for ip in others if private.match(ip) and ip != primary)
+
+
+def bound_to_lan() -> bool:
+    """O servidor foi aberto para a rede quando o app iniciou? (ligar o acesso exige reiniciar; desligar não)"""
+    return os.environ.get("EZT_LAN_ACCESS", "0") in ("1", "true", "True")
 
 
 def lan_info() -> dict:
+    from .auth import active_devices
+
     s = get_settings()
     port = int(os.environ.get("EZT_PORT", "8765"))
+    on = s.lan_access and bool(s.app_password)
     return {
         "enabled": s.lan_access,
         "configurable": bool(s.config_file),
         "password_set": bool(s.app_password),
-        "urls": [f"http://{ip}:{port}/app/" for ip in lan_ips()] if s.lan_access else [],
+        "urls": [f"http://{ip}:{port}/app/" for ip in lan_ips()] if on else [],
+        "restart_required": s.lan_access and not bound_to_lan(),
+        "devices": active_devices() if on else [],
     }
+
+
+_LIVE = {"EZT_APP_PASSWORD": ("app_password", str), "EZT_LAN_ACCESS": ("lan_access", lambda v: v == "1"),
+         "EZT_SESSION_GEN": ("session_gen", int)}
+
+
+def apply_config(values: dict[str, str]) -> None:
+    """Grava no config.env e já aplica no app aberto (sem esperar reiniciar)."""
+    write_config(values)
+    s = get_settings()
+    for key, v in values.items():
+        if key in _LIVE:
+            attr, conv = _LIVE[key]
+            setattr(s, attr, conv(v))
+
+
+def end_sessions() -> None:
+    """Derruba todos os logins do celular (eles precisam entrar de novo com a senha)."""
+    from .auth import forget_devices
+
+    apply_config({"EZT_SESSION_GEN": str(get_settings().session_gen + 1)})
+    forget_devices()
 
 
 def write_config(values: dict[str, str]) -> None:

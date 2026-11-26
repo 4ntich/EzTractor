@@ -195,12 +195,52 @@ function ProjectView() {
       )}
 
       {p.clips.length > 0 && p.settings.mode !== "download" && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold">Clipes ({p.clips.length})</h2>
+          <DownloadAll project={p} />
+        </div>
+      )}
+      {p.clips.length > 0 && p.settings.mode !== "download" && (
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {p.clips.map((c, i) => (
             <ClipCard key={`${c.id}-${c.start_s}-${c.end_s}-${c.render_status}`} clip={c} rank={i + 1} project={p} onChange={load} />
           ))}
         </section>
       )}
+    </div>
+  );
+}
+
+function DownloadAll({ project }: { project: Project }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ready = project.clips.filter((c) => c.render_status === "ready").length;
+
+  async function go() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { url } = await api<{ url: string }>(`/projects/${project.id}/download-all`);
+      const a = document.createElement("a"); // mesmo jeito dos botões "Baixar" de cada clipe
+      a.href = fileUrl(url)!;
+      a.download = "";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível baixar");
+    } finally {
+      setTimeout(() => setBusy(false), 1500); // o zip começa a baixar em seguida
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      {error && <span className="text-xs text-danger">{error}</span>}
+      <button className="btn" onClick={go} disabled={busy || ready === 0} data-testid="download-all"
+        title={ready < project.clips.length ? `${project.clips.length - ready} clipe(s) ainda renderizando ficam de fora` : undefined}>
+        {busy ? "Preparando…" : `⬇ Baixar todos (${ready})`}
+      </button>
     </div>
   );
 }

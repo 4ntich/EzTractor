@@ -112,7 +112,14 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     } catch {
       /* corpo não-JSON */
     }
-    if (res.status === 401) setToken(null);
+    if (res.status === 401) {
+      setToken(null);
+      // estava logado (celular) e a sessão caiu: volta para a senha com o motivo
+      if (token && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        try { sessionStorage.setItem("ezt-login-msg", msg); } catch { /* ignora */ }
+        window.location.href = "/login";
+      }
+    }
     throw new ApiError(res.status, msg);
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
@@ -156,7 +163,17 @@ export type SystemInfo = {
   can_update: boolean;
   can_restart: boolean;
   is_local: boolean;
-  lan: { enabled: boolean; configurable: boolean; password_set: boolean; urls: string[] };
+  lan: LanInfo;
+};
+
+export type LanDevice = { ip: string; device: string; seconds_ago: number };
+export type LanInfo = {
+  enabled: boolean;
+  configurable: boolean;
+  password_set: boolean;
+  urls: string[]; // o 1º é o endereço principal (vai no QR)
+  restart_required: boolean;
+  devices: LanDevice[];
 };
 
 export type UpdateInfo = {

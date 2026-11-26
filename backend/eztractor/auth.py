@@ -5,6 +5,8 @@
 """
 
 import hmac
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -24,7 +26,8 @@ def check_password(password: str) -> bool:
 
 def create_token() -> str:
     s = get_settings()
-    payload = {"sub": "owner", "exp": datetime.now(timezone.utc) + timedelta(hours=s.jwt_ttl_hours)}
+    # "g" = geração das sessões: "Encerrar conexões" ou trocar a senha aumenta o número e derruba os logins antigos
+    payload = {"sub": "owner", "g": s.session_gen, "exp": datetime.now(timezone.utc) + timedelta(hours=s.jwt_ttl_hours)}
     return jwt.encode(payload, s.jwt_secret, algorithm="HS256")
 
 
@@ -49,3 +52,42 @@ def require_auth(request: Request, creds: HTTPAuthorizationCredentials | None = 
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Sessão expirada, entre de novo") from None
     if payload.get("sub") != "owner":
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token inválido")
+    if payload.get("g", 0) != get_settings().session_gen:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Conexão encerrada no computador. Entre de novo.")
+    if not is_local(request):
+        _mark_seen(request)
+
+
+# ---------------------------------------------------------------- aparelhos conectados (celular)
+ACTIVE_WINDOW_S = 120  # visto nos últimos 2 min = conectado agora
+_seen: dict[str, dict] = {}
+_seen_lock = threading.Lock()
+
+
+def _device_name(agent: str) -> str:
+    a = agent.lower()
+    for key, name in (("iphone", "iPhone"), ("ipad", "iPad"), ("android", "Android"), ("windows", "Windows"),
+                      ("macintosh", "Mac"), ("linux", "Linux")):
+        if key in a:
+            return name
+    return "Navegador"
+
+
+def _mark_seen(request: Request) -> None:
+    ip = request.client.host if request.client else "?"
+    with _seen_lock:
+        _seen[ip] = {"ip": ip, "device": _device_name(request.headers.get("user-agent", "")), "at": time.time()}
+
+
+def active_devices() -> list[dict]:
+    now = time.time()
+    with _seen_lock:
+        for ip in [ip for ip, d in _seen.items() if now - d["at"] > ACTIVE_WINDOW_S]:
+            del _seen[ip]
+        return [{"ip": d["ip"], "device": d["device"], "seconds_ago": int(now - d["at"])}
+                for d in sorted(_seen.values(), key=lambda d: -d["at"])]
+
+
+def forget_devices() -> None:
+    with _seen_lock:
+        _seen.clear()

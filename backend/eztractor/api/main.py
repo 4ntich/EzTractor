@@ -11,8 +11,9 @@ from urllib.parse import quote
 import jwt
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -207,6 +208,42 @@ def list_projects(db: Session = Depends(get_db)):
 @api.get("/projects/{project_id}", response_model=ProjectOut)
 def get_project(project_id: str, db: Session = Depends(get_db)):
     return project_out(get_project_or_404(db, project_id))
+
+
+@api.get("/projects/{project_id}/download-all")
+def download_all_link(project_id: str, db: Session = Depends(get_db)):
+    """Link assinado para baixar todos os clipes prontos num .zip (o navegador não envia o login no download)."""
+    p = get_project_or_404(db, project_id)
+    ready = [c for c in p.clips if c.render_status == "ready" and c.render_key and storage.path_for(c.render_key).exists()]
+    if not ready:
+        raise HTTPException(status.HTTP_409_CONFLICT, "nenhum clipe pronto para baixar")
+    exp = datetime.now(timezone.utc) + timedelta(hours=1)
+    sig = jwt.encode({"k": p.id, "exp": exp, "p": "zip"}, get_settings().jwt_secret, algorithm="HS256")
+    return {"url": f"/zips/{p.id}?sig={sig}", "count": len(ready)}
+
+
+def build_clips_zip(p: Project, dst: Path) -> int:
+    """Clipes prontos, na ordem do ranking: '01 - Título.mp4'. Sem compressão (vídeo já é comprimido)."""
+    import zipfile
+
+    used: set[str] = set()
+    n = 0
+    with zipfile.ZipFile(dst, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as z:
+        for i, c in enumerate(p.clips, start=1):
+            if c.render_status != "ready" or not c.render_key:
+                continue
+            src = storage.path_for(c.render_key)
+            if not src.exists():
+                continue
+            name = safe_filename(f"{i:02d} - {c.title or 'clipe'}", src.suffix)
+            stem, k = name, 2
+            while name.lower() in used:  # títulos repetidos
+                name = f"{Path(stem).stem} ({k}){src.suffix}"
+                k += 1
+            used.add(name.lower())
+            z.write(src, arcname=name)
+            n += 1
+    return n
 
 
 @api.post("/projects/{project_id}/reprocess", response_model=ProjectOut)
@@ -449,17 +486,44 @@ def set_lan(body: LanIn, request: Request):
     _local_only(request)
     s = get_settings()
     values = {"EZT_LAN_ACCESS": "1" if body.enabled else "0"}
+    new_password = False
     if body.password:
         if len(body.password) < 6:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "a senha precisa ter pelo menos 6 caracteres")
         values["EZT_APP_PASSWORD"] = body.password
+        new_password = body.password != s.app_password
     elif body.enabled and not s.app_password:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "defina uma senha para o acesso pelo celular")
     try:
-        system.write_config(values)
+        system.apply_config(values)
+        if new_password or not body.enabled:  # quem entrou com a senha antiga (ou com o acesso ligado) sai
+            system.end_sessions()
     except RuntimeError as e:
         raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
-    return {"saved": True, "restart_required": True}
+    return {"saved": True, "restart_required": system.lan_info()["restart_required"]}
+
+
+@api.delete("/system/lan/password")
+def delete_lan_password(request: Request):
+    """Apaga a senha. Sem senha o celular não pode entrar, então o acesso pela rede também é desligado."""
+    _local_only(request)
+    try:
+        system.apply_config({"EZT_APP_PASSWORD": "", "EZT_LAN_ACCESS": "0"})
+        system.end_sessions()
+    except RuntimeError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
+    return system.lan_info()
+
+
+@api.post("/system/lan/disconnect")
+def disconnect_devices(request: Request):
+    """Encerra a conexão de todos os aparelhos (eles precisam entrar de novo com a senha)."""
+    _local_only(request)
+    try:
+        system.end_sessions()
+    except RuntimeError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e)) from None
+    return system.lan_info()
 
 
 @api.post("/system/restart")
@@ -479,6 +543,15 @@ def qr(data: str):
     return Response(system.qr_svg(data), media_type="image/svg+xml")
 
 
+_BLOCKED_PAGE = """<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>EzTractor</title></head>
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#04232a;color:#e6f4f6;
+font-family:system-ui,sans-serif;padding:24px;text-align:center"><div><div style="font-size:42px">🔒</div>
+<h1 style="font-size:20px;margin:12px 0 8px">{msg}</h1>
+<p style="color:#8fb3ba;font-size:14px">Para usar pelo celular, ligue o acesso na página “Celular” do EzTractor no computador.</p>
+</div></body></html>"""
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="EzTractor API", version="0.2.0", lifespan=_lifespan)
     app.add_middleware(
@@ -488,6 +561,18 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def lan_guard(request: Request, call_next):
+        """App instalado: outros aparelhos só entram com o acesso pela rede ligado E senha definida.
+        Vale na hora (desligar/excluir a senha não precisa reiniciar)."""
+        s = get_settings()
+        if s.config_file and not is_local(request) and not (s.lan_access and s.app_password):
+            msg = "O acesso pelo celular está desligado no computador."
+            if "text/html" in request.headers.get("accept", ""):  # abriu o endereço no navegador
+                return HTMLResponse(_BLOCKED_PAGE.replace("{msg}", msg), status_code=403, headers={"Cache-Control": "no-store"})
+            return JSONResponse({"detail": msg}, status_code=403)
+        return await call_next(request)
 
     @app.get("/health")
     def health():
@@ -518,6 +603,24 @@ def create_app() -> FastAPI:
         if dl:  # botão "baixar": salva com o nome do vídeo
             return FileResponse(path, filename=dl)
         return FileResponse(path)
+
+    @app.get("/zips/{project_id}")
+    def get_zip(project_id: str, sig: str, db: Session = Depends(get_db)):
+        try:
+            data = jwt.decode(sig, get_settings().jwt_secret, algorithms=["HS256"])
+        except jwt.PyJWTError:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "link inválido ou expirado") from None
+        if data.get("p") != "zip" or data.get("k") != project_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "link inválido")
+        p = get_project_or_404(db, project_id)
+        tmp_dir = Path(tempfile.mkdtemp(prefix="ezt-zip-"))
+        out = tmp_dir / "clipes.zip"
+        if not build_clips_zip(p, out):
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "nenhum clipe pronto para baixar")
+        return FileResponse(out, filename=safe_filename(f"{p.title or 'projeto'} - clipes", ".zip"),
+                            media_type="application/zip",
+                            background=BackgroundTask(shutil.rmtree, tmp_dir, ignore_errors=True))
 
     app.include_router(api)
 
