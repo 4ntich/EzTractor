@@ -1,7 +1,7 @@
 """Ingestão: baixa VODs (YouTube, Twitch, Kick…) via yt-dlp."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..control import Cancelled, current
@@ -14,6 +14,9 @@ class Downloaded:
     title: str
     video_id: str = ""
     extractor: str = ""
+    heatmap: list | None = None  # "mais repetidos" do YouTube
+    channel_names: list[str] = field(default_factory=list)  # nome/@ do próprio canal (não é propaganda)
+    has_live_chat: bool = False  # live do YouTube com chat gravado
 
 
 def _format(max_height: int) -> str:
@@ -68,5 +71,9 @@ def download_url(
         if not candidates:
             raise MediaError("download concluído mas arquivo não encontrado")
         path = candidates[0]
+    names = [str(info.get(k) or "").strip() for k in ("channel", "uploader", "uploader_id", "channel_handle")]
     return Downloaded(path, str(info.get("title") or "").strip(), str(info.get("id") or ""),
-                      str(info.get("extractor_key") or "").lower())
+                      str(info.get("extractor_key") or "").lower(),
+                      heatmap=info.get("heatmap") or None,
+                      channel_names=sorted({n for n in names if n}),
+                      has_live_chat="live_chat" in (info.get("subtitles") or {}))

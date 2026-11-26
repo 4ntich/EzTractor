@@ -17,7 +17,7 @@ from ..control import Cancelled, Control, activate, checkpoint
 from ..control import _current as _control_var
 from ..models import ACTIVE_STATUSES, Clip, Project, ProjectStatus, Template
 from . import candidates as cand_mod
-from . import ranker, signals
+from . import audience, overlays, ranker, signals, visual
 from .captions import build_ass, write_ass
 from .social import dominant_signal, make_caption, make_hashtags
 from .ingest import download_url
@@ -212,6 +212,7 @@ def process_project(project_id: str) -> None:
             project.source_key = key
             if dl.extractor.startswith("youtube") and dl.video_id:
                 project.youtube_id = dl.video_id[:32]
+            project.audience = {"heatmap": dl.heatmap, "channel": dl.channel_names, "has_live_chat": dl.has_live_chat}
             if dl.title and (not project.title or project.title == project.source_url):
                 project.title = dl.title[:255]
             db.commit()
@@ -266,7 +267,13 @@ def _transcribe_project(db: Session, project: Project, info, src: Path, workdir:
     return wav
 
 
-def _detect_skips(db: Session, project: Project, duration: float) -> None:
+def _own_names(project: Project) -> list[str]:
+    return list((project.audience or {}).get("channel") or [])
+
+
+def _detect_skips(db: Session, project: Project, duration: float, vis=None, banners: list[dict] | None = None) -> None:
+    """Propaganda/inscrição/final: transcrição + SponsorBlock + imagem (vinhetas, telas paradas, tela final)
+    + banners lidos na imagem."""
     st = project.settings or {}
     if not st.get("skip_ads", True):
         project.skip_segments = []
@@ -274,7 +281,51 @@ def _detect_skips(db: Session, project: Project, duration: float) -> None:
         segs = from_transcript(project.transcript or [], duration)
         if project.youtube_id:
             segs += from_sponsorblock(project.youtube_id, duration)
+        if vis is not None:
+            _, speech = signals.word_counts(project.transcript or [], max(1, int(duration) + 1))
+            segs += visual.skip_segments(vis, speech, duration)
+        segs += banners or []
         project.skip_segments = merge(segs)
+    db.commit()
+
+
+def _scan_banners(db: Session, project: Project, info, src: Path, windows: list[tuple[float, float]],
+                  done: set[float], on_progress=None) -> list[dict]:
+    st = project.settings or {}
+    if not st.get("skip_ads", True) or not st.get("read_banners", True) or not overlays.available():
+        return []
+    segs, stats = overlays.find_banners(src, windows, info.duration_s, info.width, info.height,
+                                        own_names=_own_names(project), on_progress=on_progress, already=done)
+    an = dict((project.settings or {}).get("analysis") or {})
+    an["ocr_frames"] = an.get("ocr_frames", 0) + stats.get("frames", 0)
+    project.settings = {**(project.settings or {}), "analysis": an}
+    return segs
+
+
+def _fetch_chat(db: Session, project: Project, duration: float, workdir: Path, on_progress=None) -> None:
+    """Baixa e resume o chat de uma live do YouTube (uma vez por projeto)."""
+    aud = dict(project.audience or {})
+    if not aud.get("has_live_chat") or aud.get("chat") or not project.source_url:
+        return
+    path = audience.download_youtube_chat(project.source_url, workdir / "chat", on_progress=on_progress)
+    if path is not None:
+        msgs = audience.parse_youtube_chat(path)
+        aud["chat"] = audience.chat_per_second(msgs, max(1, int(duration) + 1))
+        project.audience = aud
+        db.commit()
+
+
+def _record_analysis(db: Session, project: Project, sig, skips: list[dict]) -> None:
+    an = dict((project.settings or {}).get("analysis") or {})
+    aud = project.audience or {}
+    an.update({
+        "visual": sig.motion_z is not None,
+        "chat_msgs": int((aud.get("chat") or {}).get("total", 0)),
+        "heatmap": sig.heat is not None,
+        "skips": {cat: sum(1 for s in skips if cat in s.get("category", "")) for cat in
+                  ("sponsor", "interaction", "outro", "vinheta", "parado", "endscreen", "banner")},
+    })
+    project.settings = {**(project.settings or {}), "analysis": an}
     db.commit()
 
 
@@ -284,14 +335,36 @@ def _clips_mode(db: Session, project: Project, info, src: Path, workdir: Path, p
     st = project.settings or {}
     words = project.transcript or []
     _update(db, project, stage="analyze", progress=45)
-
-    _detect_skips(db, project, info.duration_s)
+    _fetch_chat(db, project, info.duration_s, workdir, on_progress=prog.span(45, 48))
+    checkpoint()
+    vis = visual.extract(src)  # trocas de cena + miniaturas numa só passada
+    _detect_skips(db, project, info.duration_s, vis=vis)
     skips = project.skip_segments or []
-    sig = signals.compute(src, wav, info.duration_s, words)
+    sig = signals.compute(src, wav, info.duration_s, words, vis=vis, audience=project.audience)
     checkpoint()
     max_clips = int(st.get("max_clips", 8))
     min_s, max_s = int(st.get("clip_min_s", 15)), int(st.get("clip_max_s", 45))
-    cands = cand_mod.generate(sig, info.duration_s, words, min_s, max_s, limit=max_clips * 2, excluded=skips)
+    limit = max_clips * 2
+    cands = cand_mod.generate(sig, info.duration_s, words, min_s, max_s, limit=limit, excluded=skips)
+
+    # banners de outros canais: lê o texto da imagem só nos candidatos (+ começo e fim do vídeo)
+    _update(db, project, stage="banners", progress=52)
+    dur = info.duration_s
+    done: set[float] = set()
+    windows = [(c.start - 3, c.end + 3) for c in cands] + [(0, min(dur, 45)), (max(0, dur - 90), dur)]
+    banners = _scan_banners(db, project, info, src, windows, done, on_progress=prog.span(52, 57))
+    if banners:  # gera de novo evitando os banners e lê os candidatos novos
+        _detect_skips(db, project, dur, vis=vis, banners=banners)
+        skips = project.skip_segments or []
+        cands = cand_mod.generate(sig, dur, words, min_s, max_s, limit=limit, excluded=skips)
+        more = _scan_banners(db, project, info, src, [(c.start - 3, c.end + 3) for c in cands], done,
+                             on_progress=prog.span(57, 59))
+        if more:
+            banners += more
+            _detect_skips(db, project, dur, vis=vis, banners=banners)
+            skips = project.skip_segments or []
+            cands = cand_mod.generate(sig, dur, words, min_s, max_s, limit=limit, excluded=skips)
+    _record_analysis(db, project, sig, skips)
     for c in cands:  # avisa a IA de trechos suspeitos por perto
         if overlap(c.start - 5, c.end + 5, skips) > 0:
             c.stats["skip_nearby"] = True
@@ -337,7 +410,13 @@ def _download_mode(db: Session, project: Project, info, src: Path, workdir: Path
     if (cfg is not None and st.get("captions", True)) or st.get("skip_ads", True):
         _update(db, project, stage="transcribe", progress=45)
         _transcribe_project(db, project, info, src, workdir, prog.span(45, 60))
-    _detect_skips(db, project, info.duration_s)
+    vis = banners = None
+    if st.get("skip_ads", True):
+        _update(db, project, stage="analyze", progress=60)
+        vis = visual.extract(src)
+        dur = info.duration_s
+        banners = _scan_banners(db, project, info, src, [(0, min(dur, 45)), (max(0, dur - 90), dur)], set())
+    _detect_skips(db, project, info.duration_s, vis=vis, banners=banners)
     clip = _whole_video_clip(db, project)
     _update(db, project, stage="render", progress=60)
     _render(db, project, clip, workdir, on_progress=prog.span(60, 99))

@@ -49,6 +49,43 @@ def snap_to_words(start: float, end: float, words: list[dict], slack: float = 2.
     return start, end
 
 
+def refine_bounds(start: float, end: float, words: list[dict], scene_s: list[int], duration: float,
+                  min_s: float, max_s: float, excluded: list[dict] | None = None) -> tuple[float, float]:
+    """Começa no início de uma frase (ou numa troca de cena) e termina depois que a frase/reação acaba."""
+    gap = 0.6
+    excluded = excluded or []
+    # início: frase que começa logo antes (até 4 s antes, ou 1,5 s depois)
+    starts = [w["start"] for i, w in enumerate(words)
+              if (i == 0 or w["start"] - words[i - 1]["end"] >= gap) and start - 4 <= w["start"] <= start + 1.5]
+    if starts:
+        start = max(0.0, min(starts, key=lambda t: abs(t - (start - 0.5))) - 0.25)
+    else:
+        cuts = [c for c in scene_s if start - 2 <= c <= start + 1]
+        if cuts:
+            start = float(min(cuts, key=lambda c: abs(c - start)))
+    # fim: frase que termina logo depois (até 4 s depois, ou 1,5 s antes)
+    ends = [w["end"] for i, w in enumerate(words)
+            if (i == len(words) - 1 or words[i + 1]["start"] - w["end"] >= gap) and end - 1.5 <= w["end"] <= end + 4]
+    if ends:
+        after = [t for t in ends if t >= end - 0.3]
+        end = (min(after) if after else max(ends)) + 0.4
+    # respeita duração e trechos a pular
+    for seg in excluded:
+        if seg["start"] < end and seg["end"] > start:
+            if seg["start"] >= start + min_s * 0.6:
+                end = min(end, seg["start"])
+            elif seg["end"] <= end - min_s * 0.6:
+                start = max(start, seg["end"])
+    end = min(duration, end, start + max_s)
+    if end - start < min_s and duration > min_s:  # curto demais: cresce sem nunca entrar num trecho a pular
+        floor = max([0.0] + [seg["end"] for seg in excluded if seg["end"] <= start + 0.01])
+        ceil = min([duration] + [seg["start"] for seg in excluded if seg["start"] >= end - 0.01])
+        start = max(floor, end - min_s)
+        if end - start < min_s:
+            end = min(ceil, start + min_s)
+    return round(start, 2), round(end, 2)
+
+
 def generate(
     sig: Signals,
     duration_s: float,
@@ -124,10 +161,12 @@ def generate(
         if len(picked) >= limit:
             break
 
+    scene_s = [int(i) for i in np.nonzero(sig.scene)[0]]
     for i, c in enumerate(picked):
         c.id = i
         c.start, c.end = snap_to_words(c.start, c.end, words)
-        c.start, c.end = round(max(0.0, c.start), 2), round(min(duration_s, c.end), 2)
+        c.start, c.end = refine_bounds(max(0.0, c.start), min(duration_s, c.end), words, scene_s, duration_s,
+                                       clip_min_s, clip_max_s, excluded)
         s, e = int(c.start), max(int(c.start) + 1, int(np.ceil(c.end)))
         c.stats = {
             "audio_peak_z": round(float(sig.audio_z[s:e].max()), 2),
@@ -136,6 +175,13 @@ def generate(
             "words": int(sig.speech[s:e].sum()),
             "peak_t": float(s + int(np.argmax(per_sec[s:e]))),  # segundo mais intenso do clipe
         }
+        if sig.chat_z is not None:
+            c.stats["chat_peak_z"] = round(float(sig.chat_z[s:e].max()), 2)
+            c.stats["chat_fun"] = round(float(sig.chat_fun[s:e].max()), 2) if sig.chat_fun is not None else 0.0
+        if sig.heat is not None:
+            c.stats["most_replayed"] = int(round(100 * float(sig.heat[s:e].max())))
+        if sig.motion_z is not None:
+            c.stats["motion_peak_z"] = round(float(sig.motion_z[s:e].max()), 2)
     return picked
 
 

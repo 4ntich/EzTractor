@@ -40,12 +40,14 @@ hiddenimports = _ezt + collect_submodules("fastapi") + collect_submodules("starl
     "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on", "h11",
     "pydantic", "pydantic_settings", "sqlalchemy.dialects.sqlite", "python_multipart", "multipart",
     "tkinter", "tkinter.messagebox",
+    "cv2", "shapely", "pyclipper", "omegaconf",
 ]
 if OBF:  # runtime do PyArmor (decifra os módulos em memória)
     runtime = next(Path(OBF).glob("pyarmor_runtime_*"))
     hiddenimports.append(runtime.name)
 hiddenimports += ["segno", "webview", "webview.menu", "webview.platforms.edgechromium", "webview.platforms.winforms", "clr"]
-for pkg in ("faster_whisper", "ctranslate2", "onnxruntime", "tokenizers", "av", "yt_dlp", "webview"):
+for pkg in ("faster_whisper", "ctranslate2", "onnxruntime", "tokenizers", "av", "yt_dlp", "webview",
+            "rapidocr", "omegaconf", "pyclipper"):
     try:
         d, b, h = collect_all(pkg)
         datas += d

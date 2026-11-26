@@ -369,6 +369,19 @@ def selftest() -> int:
         import yt_dlp  # noqa: F401
         say("bibliotecas: faster-whisper, ctranslate2, yt-dlp ok")
 
+        # leitura de banners (OCR) dentro do pacote: modelos, onnxruntime e OpenCV precisam estar lá
+        import numpy as np
+        from PIL import Image, ImageDraw, ImageFont
+
+        from eztractor.pipeline import overlays
+
+        img = Image.new("RGB", (640, 360), (25, 25, 30))
+        font = ImageFont.truetype(str(Path(os.environ["EZT_FONTS_DIR"]) / "Poppins-Bold.ttf"), 40)
+        ImageDraw.Draw(img).text((30, 150), "INSCREVA-SE @OUTRO", font=font, fill=(255, 255, 255))
+        txt = " ".join(str(t) for t in (overlays._get_engine()(np.array(img)).txts or ()))
+        assert "INSCREVA" in txt.upper(), f"OCR não leu o texto de teste: {txt!r}"
+        say(f"leitura de banners (OCR) ok: {txt!r}")
+
         port = free_port()
         start_server(port, data_dir() / "selftest-server.log")
         say(f"servidor ok na porta {port}")

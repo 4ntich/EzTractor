@@ -40,7 +40,8 @@ def merge(segs: list[dict], gap: float = 2.0) -> list[dict]:
         if out and s["start"] <= out[-1]["end"] + gap:
             last = out[-1]
             last["end"] = max(last["end"], s["end"])
-            if s["category"] != last["category"]:
+            if s["category"] not in last["category"].split("+"):  # guarda os dois tipos (ex.: tela final + banner)
+                last["category"] = f"{last['category']}+{s['category']}"
                 last["reason"] = f"{last['reason']} + {s['reason']}"
         else:
             out.append(dict(s))

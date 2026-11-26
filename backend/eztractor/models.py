@@ -51,6 +51,8 @@ class Project(Base):
     # trechos a pular (propaganda, inscrição, final): [{start,end,category,reason,source}]
     skip_segments: Mapped[list | None] = mapped_column(JSON, nullable=True)
     youtube_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # sinais da audiência (só vídeos do YouTube): {"heatmap": [...], "chat": {msgs, fun, total}, "channel": [...]}
+    audience: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

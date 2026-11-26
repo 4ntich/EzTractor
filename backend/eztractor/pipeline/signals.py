@@ -39,17 +39,33 @@ class Signals:
     scene: np.ndarray  # nº de cortes de cena no segundo
     hype: np.ndarray  # nº de palavras de empolgação no segundo
     speech: np.ndarray  # nº de palavras faladas no segundo
+    # sinais extras (zeros quando não disponíveis)
+    audio_local_z: np.ndarray | None = None  # volume comparado aos ~2 min em volta (grito numa parte calma)
+    motion_z: np.ndarray | None = None  # movimento da imagem (ação)
+    chat_z: np.ndarray | None = None  # pico de mensagens no chat da live (já adiantado para o lance)
+    chat_fun: np.ndarray | None = None  # fração de risadas/empolgação no chat (0-1)
+    heat: np.ndarray | None = None  # "mais repetidos" do YouTube, 0 = normal, 1 = o mais reassistido
 
     def __len__(self) -> int:
         return len(self.audio_z)
 
+    def _arr(self, name: str) -> np.ndarray:
+        v = getattr(self, name)
+        return v if v is not None and len(v) == len(self) else np.zeros(len(self), dtype=np.float32)
+
     def score(self) -> np.ndarray:
-        """Nota heurística por segundo."""
+        """Nota heurística por segundo. Sinais da audiência (chat, mais repetidos) pesam mais:
+        são o público dizendo o que achou bom."""
         return (
             1.0 * np.clip(self.audio_z, 0, 4)
             + 0.6 * np.minimum(self.scene, 2)
             + 1.5 * np.minimum(self.hype, 3)
             + 0.08 * np.minimum(self.speech, 6)
+            + 0.6 * np.clip(self._arr("audio_local_z"), 0, 4)
+            + 0.35 * np.clip(self._arr("motion_z"), 0, 4)
+            + 1.6 * np.clip(self._arr("chat_z"), 0, 5)
+            + 2.0 * self._arr("chat_fun") * (self._arr("chat_z") > 1)
+            + 4.0 * self._arr("heat")
         )
 
 
@@ -98,11 +114,41 @@ def word_counts(words: list[dict], n_seconds: int) -> tuple[np.ndarray, np.ndarr
     return hype, speech
 
 
-def compute(video_path: Path, wav_path: Path | None, duration_s: float, words: list[dict]) -> Signals:
+def local_z(x: np.ndarray, half: int = 60) -> np.ndarray:
+    """z-score de cada segundo em relação aos ~2 min em volta (mediana/MAD móveis)."""
+    from .audience import _rolling_median
+
+    base = _rolling_median(x, half)
+    spread = _rolling_median(np.abs(x - base), half) * 1.4826
+    return ((x - base) / np.maximum(spread, 0.25)).astype(np.float32)
+
+
+def compute(video_path: Path, wav_path: Path | None, duration_s: float, words: list[dict],
+            vis=None, audience: dict | None = None) -> Signals:
+    """`vis` (visual.Visual) traz as trocas de cena e o movimento numa só passada; `audience` traz
+    chat/mais repetidos quando o vídeo veio do YouTube."""
+    from . import audience as aud
+
     n = max(1, int(np.ceil(duration_s)))
     audio = audio_energy_z(wav_path, n) if wav_path else np.zeros(n, dtype=np.float32)
     scene = np.zeros(n, dtype=np.float32)
-    for t in scene_cuts(video_path):
+    for t in (vis.scene_times if vis is not None and vis.scene_times is not None else scene_cuts(video_path)):
         scene[min(int(t), n - 1)] += 1
     hype, speech = word_counts(words, n)
-    return Signals(audio, scene, hype, speech)
+    sig = Signals(audio, scene, hype, speech)
+    if wav_path:
+        sig.audio_local_z = local_z(audio)
+    if vis is not None and vis.n:
+        sig.motion_z = vis.motion_z(n)
+    audience = audience or {}
+    chat = audience.get("chat")
+    if chat and chat.get("total", 0) >= 50:  # chat quase vazio não diz nada
+        msgs = np.zeros(n, dtype=np.float32)
+        fun = np.zeros(n, dtype=np.float32)
+        m, f = np.asarray(chat["msgs"], dtype=np.float32)[:n], np.asarray(chat["fun"], dtype=np.float32)[:n]
+        msgs[: m.size], fun[: f.size] = m, f
+        sig.chat_z, sig.chat_fun = aud.chat_signal(msgs, fun)
+    heat = aud.heatmap_per_second(audience.get("heatmap"), n)
+    if heat is not None:
+        sig.heat = aud.heat_relative(heat)
+    return sig

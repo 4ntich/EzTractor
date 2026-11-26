@@ -3,7 +3,8 @@ import type { Project } from "@/lib/api";
 const STAGES: Record<string, string> = {
   ingest: "Baixando vídeo",
   transcribe: "Transcrevendo",
-  analyze: "Analisando momentos",
+  analyze: "Analisando imagem e momentos",
+  banners: "Procurando banners",
   rank: "Ranqueando",
   render: "Gerando vídeo",
   done: "Pronto",

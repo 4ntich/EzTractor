@@ -60,6 +60,7 @@ class ProjectSettings(BaseModel):
     download_height: int = Field(1080)
     # pular propaganda, pedidos de inscrição e finais de vídeo
     skip_ads: bool = True
+    read_banners: bool = True  # ler o texto da imagem para achar banners de outros canais (mais lento)
     # qualidade do vídeo final (lado maior em px). None = padrão do app (EZT_RENDER_HEIGHT)
     render_height: int | None = None
 

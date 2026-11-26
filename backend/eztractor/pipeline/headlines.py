@@ -21,6 +21,7 @@ TEMPLATES = {
         "speech": ("Ele falou isso mesmo?", "Escuta isso"),
         "default": ("Melhor momento da live", "Olha isso!"),
         "reason": "Pico de volume {z}σ, {cuts} cortes de cena, {hype} palavras de empolgação.",
+        "chat": "Chat explodiu", "chat_fun": " (risadas/empolgação)", "heat": "Um dos trechos mais repetidos do vídeo ({p}%)",
     },
     "en": {
         "audio": ("Explosive reaction", "Wait for the end…"),
@@ -28,6 +29,7 @@ TEMPLATES = {
         "speech": ("Did he really say that?", "Listen to this"),
         "default": ("Best moment of the stream", "Look at this!"),
         "reason": "Volume peak {z}σ, {cuts} scene cuts, {hype} hype words.",
+        "chat": "Chat blew up", "chat_fun": " (laughs/hype)", "heat": "One of the most replayed parts ({p}%)",
     },
     "es": {
         "audio": ("Reacción explosiva", "Espera al final…"),
@@ -35,6 +37,7 @@ TEMPLATES = {
         "speech": ("¿De verdad dijo eso?", "Escucha esto"),
         "default": ("Mejor momento del directo", "¡Mira esto!"),
         "reason": "Pico de volumen {z}σ, {cuts} cortes de escena, {hype} palabras de emoción.",
+        "chat": "El chat explotó", "chat_fun": " (risas/emoción)", "heat": "Una de las partes más repetidas ({p}%)",
     },
 }
 
@@ -127,4 +130,16 @@ def make_headline(
     reason = t["reason"].format(
         z=f"{stats.get('audio_peak_z', 0):.1f}", cuts=stats.get("scene_cuts", 0), hype=stats.get("hype_words", 0)
     )
-    return title, hook, reason
+    audience = audience_reason(stats, language)
+    return title, hook, (f"{audience} {reason}" if audience else reason)
+
+
+def audience_reason(stats: dict, language: str | None = None) -> str:
+    """O que o público mostrou (chat/mais repetidos), quando o vídeo tem esses sinais."""
+    t = _lang(language)
+    parts = []
+    if stats.get("most_replayed", 0) >= 60:
+        parts.append(t["heat"].format(p=stats["most_replayed"]))
+    if stats.get("chat_peak_z", 0) >= 2.5:
+        parts.append(t["chat"] + (t["chat_fun"] if stats.get("chat_fun", 0) >= 0.3 else ""))
+    return ". ".join(parts) + "." if parts else ""

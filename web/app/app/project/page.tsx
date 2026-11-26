@@ -8,7 +8,7 @@ import ClipCard from "@/components/ClipCard";
 import ClipEditor from "@/components/ClipEditor";
 import CopyCaption from "@/components/CopyCaption";
 import StatusBadge from "@/components/StatusBadge";
-import { api, fileUrl, fmtTime, isBusy, Project, RENDER_QUALITIES } from "@/lib/api";
+import { Analysis, api, fileUrl, fmtTime, isBusy, Project, RENDER_QUALITIES } from "@/lib/api";
 import type { Template } from "@/lib/templates";
 
 function ProjectView() {
@@ -152,16 +152,18 @@ function ProjectView() {
         </p>
       )}
 
+      {p.status === "ready" && p.settings.analysis && <AnalysisSummary a={p.settings.analysis} />}
+
       {(p.skip_segments?.length ?? 0) > 0 && (
         <details className="card px-4 py-3 text-sm">
           <summary className="cursor-pointer text-zinc-200">
-            ⏭ {p.skip_segments!.length} trecho(s) de propaganda, inscrição ou final detectados e pulados
+            ⏭ {p.skip_segments!.length} trecho(s) pulados: propaganda, vinheta, banner, tela parada ou final
           </summary>
           <ul className="mt-2 space-y-1 text-zinc-400">
             {p.skip_segments!.map((s, i) => (
               <li key={i}>
                 {fmtTime(s.start)}–{fmtTime(s.end)} · {s.reason}
-                <span className="ml-1 text-xs text-zinc-500">({s.source === "sponsorblock" ? "SponsorBlock" : "fala detectada"})</span>
+                <span className="ml-1 text-xs text-zinc-500">({SOURCE[s.source] ?? s.source})</span>
               </li>
             ))}
           </ul>
@@ -207,6 +209,39 @@ function ProjectView() {
             <ClipCard key={`${c.id}-${c.start_s}-${c.end_s}-${c.render_status}`} clip={c} rank={i + 1} project={p} onChange={load} />
           ))}
         </section>
+      )}
+    </div>
+  );
+}
+
+const SOURCE: Record<string, string> = { sponsorblock: "SponsorBlock", transcricao: "fala detectada", imagem: "imagem" };
+
+/** Mostra quais sinais escolheram os cortes e o que foi pulado. */
+function AnalysisSummary({ a }: { a: Analysis }) {
+  const chip = (on: boolean, label: string, title: string) => (
+    <span title={title} className={`rounded-full px-2.5 py-1 text-xs ring-1 ${on
+      ? "bg-emerald-500/10 text-emerald-300 ring-emerald-400/30" : "text-zinc-500 ring-white/10"}`}>
+      {on ? "✓" : "–"} {label}
+    </span>
+  );
+  const sk = a.skips ?? {};
+  const skipped = [
+    [sk.vinheta, "vinheta"], [sk.banner, "banner"], [sk.endscreen, "tela final"], [sk.parado, "tela parada"],
+    [(sk.sponsor ?? 0) + (sk.interaction ?? 0), "propaganda/inscrição"], [sk.outro, "despedida"],
+  ].filter(([n]) => (n as number) > 0) as [number, string][];
+  return (
+    <div className="card flex flex-wrap items-center gap-2 px-4 py-3" data-testid="analysis">
+      <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-zinc-400">Como os cortes foram escolhidos</span>
+      {chip(true, "Áudio e fala", "Volume, gritos, palavras de empolgação")}
+      {chip(Boolean(a.visual), "Imagem", "Movimento, trocas de cena, vinhetas e telas paradas")}
+      {chip((a.ocr_frames ?? 0) > 0, "Banners lidos", `${a.ocr_frames ?? 0} quadros lidos procurando banners de outros canais`)}
+      {chip((a.chat_msgs ?? 0) > 0, (a.chat_msgs ?? 0) > 0 ? `Chat da live (${(a.chat_msgs ?? 0).toLocaleString("pt-BR")} msgs)` : "Chat da live",
+        "Picos de mensagens e risadas no chat (lives do YouTube)")}
+      {chip(Boolean(a.heatmap), "Mais repetidos", "Trechos que o público mais reassistiu no YouTube")}
+      {skipped.length > 0 && (
+        <span className="ml-auto text-xs text-zinc-400">
+          Pulados: {skipped.map(([n, l]) => `${n} ${l}`).join(", ")}
+        </span>
       )}
     </div>
   );

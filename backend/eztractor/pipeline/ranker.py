@@ -38,7 +38,11 @@ class RankedClip:
 
 SYSTEM_PROMPT = """Você é um editor de clipes para TikTok, Reels e Shorts especializado em lives de jogos.
 Você recebe trechos candidatos de uma gravação longa. Cada um traz a transcrição do streamer e sinais \
-automáticos (pico de volume em desvios-padrão, cortes de cena, palavras de empolgação).
+automáticos (pico de volume em desvios-padrão, cortes de cena, palavras de empolgação, movimento da imagem).
+Quando existirem, há sinais do PÚBLICO, os mais confiáveis para prever viralização:
+- most_replayed (0-100): quanto o trecho aparece no gráfico "mais repetidos" do YouTube;
+- chat_peak_z: pico de mensagens no chat da live (desvios-padrão acima do normal) e chat_fun: fração de \
+risadas/empolgação ("kkkk", KEKW, 😂, POG) nesse pico.
 
 Para cada candidato, avalie o potencial de viralizar como clipe vertical curto:
 - Momentos fortes: jogada decisiva, eliminação múltipla, falha engraçada, reação exagerada, susto, \

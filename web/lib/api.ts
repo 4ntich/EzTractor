@@ -72,8 +72,19 @@ export type ProjectSettings = {
   template_id?: string | null;
   mode?: "clips" | "download";
   skip_ads?: boolean;
+  read_banners?: boolean;
   download_height?: number;
   render_height?: number | null;
+  analysis?: Analysis; // preenchido pelo processamento
+};
+
+/** Como os cortes foram escolhidos (quais sinais foram usados e o que foi pulado). */
+export type Analysis = {
+  visual?: boolean;
+  ocr_frames?: number;
+  chat_msgs?: number;
+  heatmap?: boolean;
+  skips?: Record<string, number>;
 };
 
 export type Project = {

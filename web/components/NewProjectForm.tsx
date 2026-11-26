@@ -18,6 +18,7 @@ const DEFAULTS: ProjectSettings = {
   captions: true,
   ranker: null,
   skip_ads: true,
+  read_banners: true,
 };
 
 function rankerHint(r: Ranker, caps: Capabilities | null): string {
@@ -299,11 +300,25 @@ export default function NewProjectForm() {
         <span>
           Pular propagandas, pedidos de inscrição e finais de vídeo
           <span className="block text-xs text-zinc-400">
-            Detecta pela fala e, no YouTube, pelas marcações do SponsorBlock. Os cortes nunca incluem esses trechos
+            Detecta pela fala, pela imagem (vinhetas que se repetem, telas paradas, tela final) e, no YouTube,
+            pelas marcações do SponsorBlock. Os cortes nunca incluem esses trechos
             {mode === "download" ? " e o vídeo baixado sai sem eles (dá para ajustar depois no editor)." : "."}
           </span>
         </span>
       </label>
+      {(s.skip_ads ?? true) && (
+        <label className="ml-6 flex items-start gap-2 text-sm text-zinc-200">
+          <input type="checkbox" className="mt-1" checked={s.read_banners ?? true}
+            onChange={(e) => set("read_banners", e.target.checked)} data-testid="read-banners" />
+          <span>
+            Ler banners na imagem
+            <span className="block text-xs text-zinc-400">
+              Lê o texto da tela para achar banners de outros canais, “inscreva-se”, links e cupons. O seu próprio
+              overlay e os alertas da live são ignorados. Deixa a análise um pouco mais lenta.
+            </span>
+          </span>
+        </label>
+      )}
 
       {error && <p className="rounded-lg bg-red-500/15 px-3 py-2 text-sm text-danger ring-1 ring-red-400/30">{error}</p>}
       <button className="btn w-full sm:w-auto" disabled={busy}>
