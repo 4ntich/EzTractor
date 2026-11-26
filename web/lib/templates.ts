@@ -38,17 +38,23 @@ export type Layer = {
   showSeconds: number;
 };
 
+/** size: % da altura (topo/inferior) ou da largura (esquerda/direita). */
+export type Edge = { enabled: boolean; size: number; color: string };
+export type EdgeKey = "top" | "bottom" | "left" | "right";
 export type Frame = {
-  sideBorders: boolean;
-  headerBorder: boolean;
-  footerBorder: boolean;
-  color: string;
-  sideWidthPercent: number;
-  headerHeightPercent: number;
-  footerHeightPercent: number;
+  top: Edge;
+  bottom: Edge;
+  left: Edge;
+  right: Edge;
   color2: string;        // cor da linha interna (borda de 2 cores)
-  innerPercent: number;  // espessura da linha interna, % da borda (0 = desliga)
+  innerPercent: number;  // espessura da linha interna, % de cada borda (0 = desliga)
 };
+export const EDGES: { key: EdgeKey; label: string; max: number }[] = [
+  { key: "top", label: "Topo", max: 45 },
+  { key: "bottom", label: "Inferior", max: 45 },
+  { key: "left", label: "Esquerda", max: 45 },
+  { key: "right", label: "Direita", max: 45 },
+];
 
 export type CaptionStyle = {
   fontFamily: string;
@@ -184,8 +190,10 @@ export function blankConfig(): TemplateConfig {
     layoutPreset: "free",
     vignette: false,
     frame: {
-      sideBorders: false, headerBorder: false, footerBorder: false, color: "#FACC15",
-      sideWidthPercent: 3, headerHeightPercent: 10, footerHeightPercent: 8,
+      top: { enabled: false, size: 10, color: "#FACC15" },
+      bottom: { enabled: false, size: 8, color: "#FACC15" },
+      left: { enabled: false, size: 3, color: "#FACC15" },
+      right: { enabled: false, size: 3, color: "#FACC15" },
       color2: "#000000", innerPercent: 0,
     },
     captions: {

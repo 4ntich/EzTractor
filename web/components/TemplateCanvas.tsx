@@ -15,6 +15,7 @@ type Props = {
   onMove?: (id: string, x: number, y: number) => void;
   animateKey?: number; // muda => reinicia as animações
   showCaptions?: boolean;
+  showSafeArea?: boolean;
   className?: string;
 };
 
@@ -22,7 +23,7 @@ const SNAP = 1.5; // % de distância para "grudar" no centro
 
 export default function TemplateCanvas({
   cfg, families, background = "/sample-gameplay.jpg", selectedId, onSelect, onMove, animateKey = 0,
-  showCaptions = true, className = "",
+  showCaptions = true, showSafeArea = true, className = "",
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<{ id: string; sx: number; sy: number; lx: number; ly: number } | null>(null);
@@ -60,6 +61,9 @@ export default function TemplateCanvas({
   }
 
   const f = cfg.frame;
+  const sz = (k: "top" | "bottom" | "left" | "right") => (f[k]?.enabled ? f[k].size : 0);
+  const [T, B, L, R] = [sz("top"), sz("bottom"), sz("left"), sz("right")];
+  const inner = Math.max(0, Math.min(100, f.innerPercent ?? 0)) / 100;
   const cap = cfg.captions;
   const capWords = ["isso", "foi", "insano", "demais"].slice(0, Math.max(1, cap.wordsPerLine));
 
@@ -88,25 +92,17 @@ export default function TemplateCanvas({
           style={{ background: "radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,.75) 100%)" }} />
       )}
 
-      {/* moldura (+ linha interna de 2ª cor, se innerPercent > 0) */}
-      {f.headerBorder && (
-        <div className="absolute inset-x-0 top-0" style={{ height: `${f.headerHeightPercent}%`, background: f.color }}>
-          {(f.innerPercent ?? 0) > 0 && <div className="absolute inset-x-0 bottom-0" style={{ height: `${f.innerPercent}%`, background: f.color2 }} />}
-        </div>
-      )}
-      {f.footerBorder && (
-        <div className="absolute inset-x-0 bottom-0" style={{ height: `${f.footerHeightPercent}%`, background: f.color }}>
-          {(f.innerPercent ?? 0) > 0 && <div className="absolute inset-x-0 top-0" style={{ height: `${f.innerPercent}%`, background: f.color2 }} />}
-        </div>
-      )}
-      {f.sideBorders && (
+      {/* moldura: 4 bordas independentes (mesma ordem e geometria do render final) */}
+      {L > 0 && <div className="absolute inset-y-0 left-0" style={{ width: `${L}%`, background: f.left.color }} />}
+      {R > 0 && <div className="absolute inset-y-0 right-0" style={{ width: `${R}%`, background: f.right.color }} />}
+      {T > 0 && <div className="absolute inset-x-0 top-0" style={{ height: `${T}%`, background: f.top.color }} />}
+      {B > 0 && <div className="absolute inset-x-0 bottom-0" style={{ height: `${B}%`, background: f.bottom.color }} />}
+      {inner > 0 && (
         <>
-          <div className="absolute inset-y-0 left-0" style={{ width: `${f.sideWidthPercent}%`, background: f.color }}>
-            {(f.innerPercent ?? 0) > 0 && <div className="absolute inset-y-0 right-0" style={{ width: `${f.innerPercent}%`, background: f.color2 }} />}
-          </div>
-          <div className="absolute inset-y-0 right-0" style={{ width: `${f.sideWidthPercent}%`, background: f.color }}>
-            {(f.innerPercent ?? 0) > 0 && <div className="absolute inset-y-0 left-0" style={{ width: `${f.innerPercent}%`, background: f.color2 }} />}
-          </div>
+          {T > 0 && <div className="absolute" style={{ left: `${L}%`, right: `${R}%`, top: `${T * (1 - inner)}%`, height: `${T * inner}%`, background: f.color2 }} />}
+          {B > 0 && <div className="absolute" style={{ left: `${L}%`, right: `${R}%`, bottom: `${B * (1 - inner)}%`, height: `${B * inner}%`, background: f.color2 }} />}
+          {L > 0 && <div className="absolute" style={{ top: `${T}%`, bottom: `${B}%`, left: `${L * (1 - inner)}%`, width: `${L * inner}%`, background: f.color2 }} />}
+          {R > 0 && <div className="absolute" style={{ top: `${T}%`, bottom: `${B}%`, right: `${R * (1 - inner)}%`, width: `${R * inner}%`, background: f.color2 }} />}
         </>
       )}
       {cfg.progressBar.enabled && (
@@ -159,7 +155,7 @@ export default function TemplateCanvas({
       {guides.v && <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-fuchsia-400" />}
       {guides.h && <div className="pointer-events-none absolute inset-x-0 top-1/2 h-px bg-fuchsia-400" />}
       {/* área segura (onde as interfaces do TikTok/Reels não cobrem) */}
-      {interactive && (
+      {interactive && showSafeArea && (
         <div className="pointer-events-none absolute border border-dashed border-white/15"
           style={{ left: "6%", right: "16%", top: "9%", bottom: "20%" }} title="Área segura" />
       )}

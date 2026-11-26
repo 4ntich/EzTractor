@@ -193,17 +193,40 @@ class TemplateLayer(BaseModel):
         return v
 
 
-class TemplateFrame(BaseModel):
-    sideBorders: bool = False
-    headerBorder: bool = False
-    footerBorder: bool = False
+class TemplateEdge(BaseModel):
+    """Uma borda da moldura. size = % da altura (topo/inferior) ou da largura (esquerda/direita)."""
+
+    enabled: bool = False
+    size: float = Field(8, ge=0.1, le=45)
     color: str = Field("#C9AE73", pattern=HEX)
-    sideWidthPercent: float = Field(5, ge=0.1, le=45)
-    headerHeightPercent: float = Field(8, ge=0.1, le=45)
-    footerHeightPercent: float = Field(8, ge=0.1, le=45)
+
+
+class TemplateFrame(BaseModel):
+    top: TemplateEdge = Field(default_factory=lambda: TemplateEdge(size=8))
+    bottom: TemplateEdge = Field(default_factory=lambda: TemplateEdge(size=8))
+    left: TemplateEdge = Field(default_factory=lambda: TemplateEdge(size=3))
+    right: TemplateEdge = Field(default_factory=lambda: TemplateEdge(size=3))
     # linha de destaque interna (borda de duas cores) — innerPercent=0 desliga
     color2: str = Field("#000000", pattern=HEX)
-    innerPercent: float = Field(0, ge=0, le=100)  # espessura da linha interna, % da borda
+    innerPercent: float = Field(0, ge=0, le=100)  # espessura da linha interna, % de cada borda
+
+    @model_validator(mode="before")
+    @classmethod
+    def _legacy(cls, d):
+        """Templates antigos (headerBorder/footerBorder/sideBorders + 1 cor) viram 4 bordas independentes."""
+        if not isinstance(d, dict) or any(k in d for k in ("top", "bottom", "left", "right")):
+            return d
+        if not any(k in d for k in ("headerBorder", "footerBorder", "sideBorders")):
+            return d
+        c = d.get("color", "#C9AE73")
+        side = d.get("sideWidthPercent", 5)
+        return {
+            **d,
+            "top": {"enabled": bool(d.get("headerBorder")), "size": d.get("headerHeightPercent", 8), "color": c},
+            "bottom": {"enabled": bool(d.get("footerBorder")), "size": d.get("footerHeightPercent", 8), "color": c},
+            "left": {"enabled": bool(d.get("sideBorders")), "size": side, "color": c},
+            "right": {"enabled": bool(d.get("sideBorders")), "size": side, "color": c},
+        }
 
 
 class TemplateCaptions(BaseModel):

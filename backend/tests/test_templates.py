@@ -90,10 +90,22 @@ def test_template_captions_highlight_current_word():
 
 
 def test_frame_bars_and_output_size():
+    # formato antigo (1 cor, laterais juntas) é convertido para 4 bordas
     cfg = _cfg(frame={"headerBorder": True, "footerBorder": True, "sideBorders": True, "color": "#123456",
                       "headerHeightPercent": 10, "footerHeightPercent": 5, "sideWidthPercent": 2})
     bars = frame_bars(cfg, 1080, 1920)
-    assert {(b["y"], b["h"]) for b in bars[:2]} == {(0, 192), (1824, 96)} and bars[2]["w"] == 22
+    assert {(b["y"], b["h"]) for b in bars if b["w"] == 1080} == {(0, 192), (1824, 96)}
+    assert sorted(b["x"] for b in bars if b["h"] == 1920) == [0, 1058] and all(b["color"] == "#123456" for b in bars)
+    # cada borda com largura e cor próprias; desligada não desenha
+    cfg = _cfg(frame={"top": {"enabled": True, "size": 10, "color": "#FF0000"},
+                      "left": {"enabled": True, "size": 5, "color": "#00FF00"},
+                      "right": {"enabled": False, "size": 9, "color": "#0000FF"},
+                      "innerPercent": 50, "color2": "#FFFFFF"})
+    bars = frame_bars(cfg, 1000, 2000)
+    assert {"x": 0, "y": 0, "w": 50, "h": 2000, "color": "#00FF00"} in bars
+    assert {"x": 0, "y": 0, "w": 1000, "h": 200, "color": "#FF0000"} in bars
+    assert not any(b["color"] == "#0000FF" for b in bars)
+    assert {"x": 50, "y": 100, "w": 950, "h": 100, "color": "#FFFFFF"} in bars  # linha interna do topo
     assert output_size(_cfg(), 1920) == (1080, 1920)
     assert output_size(_cfg(width=1920, height=1080), 1280) == (1280, 720)
     assert output_size(_cfg(width=1080, height=1080), 1920) == (1920, 1920)  # a qualidade escolhida manda

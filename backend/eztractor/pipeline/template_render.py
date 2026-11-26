@@ -226,27 +226,37 @@ def build_template_ass(
 def frame_bars(cfg: dict, out_w: int, out_h: int) -> list[dict]:
     """Retângulos da moldura em px do vídeo de saída (opcional: linha interna de 2ª cor)."""
     f = cfg["frame"]
-    c, c2 = f["color"], f.get("color2", "#000000")
-    inner = max(0.0, min(100.0, f.get("innerPercent", 0)))  # % da espessura da borda
+    c2 = f.get("color2", "#000000")
+    inner = max(0.0, min(100.0, f.get("innerPercent", 0)))  # % da espessura de cada borda
+
+    def px(edge: str) -> int:
+        e = f[edge]
+        if not e["enabled"]:
+            return 0
+        return round((out_h if edge in ("top", "bottom") else out_w) * e["size"] / 100)
+
+    T, B, Lw, R = px("top"), px("bottom"), px("left"), px("right")
     bars = []
-    if f["headerBorder"]:
-        h = round(out_h * f["headerHeightPercent"] / 100)
-        bars.append({"x": 0, "y": 0, "w": out_w, "h": h, "color": c})
-        if inner and (t := round(h * inner / 100)) > 0:
-            bars.append({"x": 0, "y": h - t, "w": out_w, "h": t, "color": c2})
-    if f["footerBorder"]:
-        h = round(out_h * f["footerHeightPercent"] / 100)
-        bars.append({"x": 0, "y": out_h - h, "w": out_w, "h": h, "color": c})
-        if inner and (t := round(h * inner / 100)) > 0:
-            bars.append({"x": 0, "y": out_h - h, "w": out_w, "h": t, "color": c2})
-    if f["sideBorders"]:
-        w = round(out_w * f["sideWidthPercent"] / 100)
-        bars += [{"x": 0, "y": 0, "w": w, "h": out_h, "color": c},
-                 {"x": out_w - w, "y": 0, "w": w, "h": out_h, "color": c}]
-        if inner and (t := round(w * inner / 100)) > 0:
-            bars += [{"x": w - t, "y": 0, "w": t, "h": out_h, "color": c2},
-                     {"x": out_w - w, "y": 0, "w": t, "h": out_h, "color": c2}]
-    return bars
+    # laterais primeiro; topo/inferior por cima (cantos ficam com a cor horizontal)
+    if Lw:
+        bars.append({"x": 0, "y": 0, "w": Lw, "h": out_h, "color": f["left"]["color"]})
+    if R:
+        bars.append({"x": out_w - R, "y": 0, "w": R, "h": out_h, "color": f["right"]["color"]})
+    if T:
+        bars.append({"x": 0, "y": 0, "w": out_w, "h": T, "color": f["top"]["color"]})
+    if B:
+        bars.append({"x": 0, "y": out_h - B, "w": out_w, "h": B, "color": f["bottom"]["color"]})
+    if inner:  # linha interna: um retângulo contornando a área do vídeo
+        t = {k: round(v * inner / 100) for k, v in (("T", T), ("B", B), ("L", Lw), ("R", R))}
+        if t["T"]:
+            bars.append({"x": Lw, "y": T - t["T"], "w": out_w - Lw - R, "h": t["T"], "color": c2})
+        if t["B"]:
+            bars.append({"x": Lw, "y": out_h - B, "w": out_w - Lw - R, "h": t["B"], "color": c2})
+        if t["L"]:
+            bars.append({"x": Lw - t["L"], "y": T, "w": t["L"], "h": out_h - T - B, "color": c2})
+        if t["R"]:
+            bars.append({"x": out_w - R, "y": T, "w": t["R"], "h": out_h - T - B, "color": c2})
+    return [b for b in bars if b["w"] > 0 and b["h"] > 0]
 
 
 def output_size(cfg: dict, max_side: int) -> tuple[int, int]:
